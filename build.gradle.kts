@@ -4,6 +4,10 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.springframework.boot.gradle.tasks.bundling.BootJar
 import org.gradle.jvm.tasks.Jar
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.util.Base64
 
 plugins {
     kotlin("jvm") version "2.2.21" // Kotlin JVM plugin
@@ -174,9 +178,9 @@ publishing {
 
     repositories {
         maven {
-            name = "OSSRH"
-            val releasesRepoUrl = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
-            val snapshotsRepoUrl = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/")
+            name = "ossrh-staging-api"
+            val releasesRepoUrl = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
+            val snapshotsRepoUrl = uri("https://central.sonatype.com/repository/maven-snapshots/")
             url = if (version.toString().endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
             credentials {
                 username = project.findProperty("ossrhUsername") as String? ?: System.getenv("OSSRH_USERNAME")
@@ -209,13 +213,30 @@ subprojects {
     version = rootProject.version
 }
 
-tasks.register("publishAll") {
+tasks.register("publishToMavenCentral") {
     group = "publishing"
-    description = "Publish all modules (main and starter) to Maven repositories."
-    // Add main/root project publish task
+    description = "Publishes all Maven publications produced by this project to Maven Central."
     val mainPublish = tasks.matching { it.name == "publish" }
     // Collect publish tasks from subprojects
     val subprojectPublishes = subprojects.map { it.tasks.matching { t -> t.name == "publish" } }
     val allPublishes = mainPublish + subprojectPublishes
     dependsOn(allPublishes)
+    doLast {
+        val username = properties["ossrhUsername"] as String? ?: throw IllegalArgumentException("OSSRH username not found")
+        val password = properties["ossrhPassword"] as String? ?: throw IllegalArgumentException("OSSRH password not found")
+        val namespace = properties["ossrhNamespace"] as String? ?: project.group.toString()
+        val token = Base64.getEncoder().encodeToString("$username:$password".encodeToByteArray())
+        val client = HttpClient.newHttpClient()
+        val request = HttpRequest.newBuilder()
+            .uri(uri("https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/$namespace"))
+            .header("Authorization", "Bearer $token")
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build()
+        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        if (response.statusCode() < 400) {
+            logger.info(response.body())
+        } else {
+            logger.error(response.body())
+        }
+    }
 }
