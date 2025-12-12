@@ -1,0 +1,102 @@
+name: Security Vulnerability Report
+description: Report a security vulnerability in Encryptable
+title: "[Security]: "
+labels: ["security", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **Security Notice**
+        
+        If this is a critical security vulnerability that could be exploited, please consider reporting it privately to the maintainer directly at **contact@wanion.tech** instead of creating a public issue.
+        
+        For non-critical security concerns or suggestions, please continue below.
+
+  - type: textarea
+    id: vulnerability-description
+    attributes:
+      label: Vulnerability Description
+      description: Describe the security issue
+      placeholder: Describe the vulnerability...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this vulnerability?
+      options:
+        - Low - Theoretical or difficult to exploit
+        - Medium - Exploitable under specific conditions
+        - High - Easily exploitable with significant impact
+        - Critical - Actively exploitable with severe consequences
+    validations:
+      required: true
+
+  - type: textarea
+    id: attack-scenario
+    attributes:
+      label: Attack Scenario
+      description: How could this vulnerability be exploited?
+      placeholder: An attacker could...
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected-components
+    attributes:
+      label: Affected Components
+      description: Which parts of Encryptable are affected?
+      placeholder: |
+        - Encryption module
+        - Repository implementation
+        - etc.
+    validations:
+      required: true
+
+  - type: input
+    id: affected-versions
+    attributes:
+      label: Affected Versions
+      description: Which versions are affected?
+      placeholder: "1.0.0 and earlier"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this vulnerability?
+      placeholder: |
+        1. Configure entity with...
+        2. Perform operation...
+        3. Observe vulnerability...
+
+  - type: textarea
+    id: proposed-fix
+    attributes:
+      label: Proposed Fix
+      description: If you have suggestions for fixing this, please share
+      placeholder: This could be fixed by...
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other relevant information
+      placeholder: Additional context...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have verified this vulnerability exists in the latest version
+          required: true
+        - label: I have not publicly disclosed this vulnerability elsewhere
+          required: true
+        - label: I understand this issue will be handled with appropriate discretion
+          required: true
+

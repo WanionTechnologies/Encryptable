@@ -1,0 +1,74 @@
+name: Question / Support
+description: Ask a question or get help using Encryptable
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for your question! Please provide as much detail as possible.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: How do I...?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish?
+      placeholder: I'm trying to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-tried
+    attributes:
+      label: What Have You Tried?
+      description: What solutions have you already attempted?
+      placeholder: I tried...
+
+  - type: textarea
+    id: code-sample
+    attributes:
+      label: Code Sample (Optional)
+      description: Relevant code that shows what you're working with
+      placeholder: |
+        ```kotlin
+        // Your code here
+        ```
+      render: kotlin
+
+  - type: textarea
+    id: documentation-checked
+    attributes:
+      label: Documentation Checked
+      description: Which documentation have you already reviewed?
+      placeholder: |
+        - [ ] README.md
+        - [ ] PREREQUISITES.md
+        - [ ] Examples
+        - [ ] etc.
+
+  - type: input
+    id: encryptable-version
+    attributes:
+      label: Encryptable Version
+      description: Which version are you using?
+      placeholder: "1.0.0"
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues for similar questions
+          required: true
+        - label: I have checked the documentation
+          required: true
+

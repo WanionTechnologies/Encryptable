@@ -1,0 +1,142 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in Encryptable
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the information below to help us diagnose and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Create entity with...
+        2. Call method...
+        3. Observe error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+      placeholder: Describe what should happen...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What actually happened
+      placeholder: Describe what actually happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: code-sample
+    attributes:
+      label: Code Sample
+      description: Minimal code to reproduce the issue
+      placeholder: |
+        ```kotlin
+        // Your code here
+        ```
+      render: kotlin
+
+  - type: textarea
+    id: stack-trace
+    attributes:
+      label: Stack Trace / Logs
+      description: Relevant error messages or stack traces
+      placeholder: Paste stack trace here...
+      render: text
+
+  - type: input
+    id: encryptable-version
+    attributes:
+      label: Encryptable Version
+      description: Which version of Encryptable are you using?
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: kotlin-version
+    attributes:
+      label: Kotlin Version
+      description: Which version of Kotlin?
+      placeholder: "2.2.21"
+    validations:
+      required: true
+
+  - type: input
+    id: java-version
+    attributes:
+      label: Java Version
+      description: Which version of Java/JDK?
+      placeholder: "21"
+    validations:
+      required: true
+
+  - type: input
+    id: spring-boot-version
+    attributes:
+      label: Spring Boot Version
+      description: Which version of Spring Boot?
+      placeholder: "4.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: mongodb-version
+    attributes:
+      label: MongoDB Version
+      description: Which version of MongoDB?
+      placeholder: "7.0"
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem
+      placeholder: Add any other context about the problem here...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have included all relevant information above
+          required: true
+        - label: I am using a supported Java version (21+)
+          required: true
+

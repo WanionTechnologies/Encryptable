@@ -1,0 +1,15 @@
+<!DOCTYPE aspectj PUBLIC "-//AspectJ//DTD//EN" "https://www.eclipse.org/aspectj/dtd/aspectj.dtd">
+<aspectj>
+    <weaver options="-warn:none -Xlint:ignore">
+        <!-- EMPTY = Weave all classes in all packages and subpackages -->
+    </weaver>
+    <aspects>
+        <!-- Register all your aspects -->
+        <aspect name="tech.wanion.encryptable.aop.EncryptableByteFieldAspect"/>
+        <aspect name="tech.wanion.encryptable.aop.EncryptableFieldAspect"/>
+        <aspect name="tech.wanion.encryptable.aop.EncryptableIDAspect"/>
+        <aspect name="tech.wanion.encryptable.aop.EncryptableListFieldAspect"/>
+        <aspect name="tech.wanion.encryptable.aop.EncryptableMetadataAspect"/>
+        <aspect name="tech.wanion.encryptable.aop.EncryptablePrepareAspect"/>
+    </aspects>
+</aspectj>
