@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Version History
 
 - **1.0.0** (2025-12-12) - Initial release
+- **1.0.1** (2025-12-14) - Aspect Application Reliability
 
 ---
 
@@ -102,6 +103,14 @@ MIT License - Free and open-source forever
 
 ---
 
+## [1.0.1] - 2025-12-14
+
+### Aspect Application Reliability
+
+- Improved framework configuration to ensure all aspects are reliably applied in user projects.
+- No breaking changes.
+
+---
 
 ## Contributing
 
@@ -110,4 +119,3 @@ See [Contributing](CONTRIBUTING.md) for guidelines on bug reports, feature reque
 ## Reporting Security Issues
 
 If you discover a security vulnerability, please open a [GitHub Issue](https://github.com/WanionTechnologies/Encryptable/issues) with the "security" label or contact the maintainer directly.
-

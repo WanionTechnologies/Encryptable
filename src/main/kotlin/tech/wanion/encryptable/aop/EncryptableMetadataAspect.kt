@@ -3,6 +3,7 @@ package tech.wanion.encryptable.aop
 import org.aspectj.lang.JoinPoint
 import org.aspectj.lang.annotation.Aspect
 import org.aspectj.lang.annotation.Before
+import org.springframework.stereotype.Component
 import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.mongo.EncryptableMongoRepository
 import tech.wanion.encryptable.mongo.EncryptableMongoRepositoryImpl
@@ -22,6 +23,7 @@ import tech.wanion.encryptable.mongo.EncryptableMongoRepositoryImpl
  * Field reflection results are cached for performance optimization.
  */
 @Aspect
+@Component
 @Suppress("SpringAopPointcutExpressionInspection")
 class EncryptableMetadataAspect {
     companion object {

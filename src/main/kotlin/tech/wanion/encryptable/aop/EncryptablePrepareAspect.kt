@@ -6,6 +6,7 @@ import org.aspectj.lang.annotation.Before
 import org.aspectj.lang.annotation.Pointcut
 import org.bson.types.ObjectId
 import org.springframework.data.mongodb.gridfs.GridFsTemplate
+import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
 import tech.wanion.encryptable.config.EncryptableConfig
 import tech.wanion.encryptable.mongo.Encrypt
@@ -20,6 +21,7 @@ import tech.wanion.encryptable.util.extensions.getField
  * Aspect for intercepting Encryptable.prepare() to process byte array fields before entity preparation.
  */
 @Aspect
+@Component
 class EncryptablePrepareAspect {
     companion object {
         /**

@@ -10,6 +10,7 @@ import org.bson.types.ObjectId
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.data.mongodb.gridfs.GridFsTemplate
+import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
 import tech.wanion.encryptable.config.EncryptableConfig
 import tech.wanion.encryptable.mongo.Encrypt
@@ -24,6 +25,7 @@ import tech.wanion.encryptable.util.extensions.getField
  * This aspect allows custom logic to be executed before such fields are accessed,for example, for logging or security purposes.
  */
 @Aspect
+@Component
 @Suppress("SpringAopPointcutExpressionInspection")
 class EncryptableByteFieldAspect {
     companion object {
