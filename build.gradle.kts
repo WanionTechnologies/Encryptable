@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "tech.wanion"
-version = "1.0.1"
+version = "1.0.2"
 
 java {
 	toolchain {
@@ -31,6 +31,7 @@ java {
 }
 
 repositories {
+    mavenLocal()
 	mavenCentral()
 }
 
@@ -61,7 +62,7 @@ dependencies {
     implementation("at.favre.lib:hkdf:$hkdfVersion")
 
     // AspectJ for AOP support
-    implementation("org.springframework:spring-aspects:$springAspectsVersion")
+    //implementation("org.springframework:spring-aspects:$springAspectsVersion")
     implementation("org.aspectj:aspectjrt:$aspectjVersion")
     implementation("org.aspectj:aspectjweaver:$aspectjVersion")
 

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **1.0.0** (2025-12-12) - Initial release
 - **1.0.1** (2025-12-14) - Aspect Application Reliability
+- **1.0.2** (2025-12-17) - Reverted Change to Aspect Application Reliability, see details below
 
 ---
 
@@ -108,9 +109,20 @@ MIT License - Free and open-source forever
 ### Aspect Application Reliability
 
 - Improved framework configuration to ensure all aspects are reliably applied in user projects.
-- No breaking changes.
 
 ---
+
+## [1.0.2] - 2025-12-17
+
+### Aspect Application Reliability
+
+- Turns out the changes in 1.0.1 were not enough to guarantee reliable aspect application.
+- Improved documentation around Gradle setup to ensure aspects are always applied correctly.
+- If you were affected by aspect application issues in 1.0.0 or 1.0.1, please follow the updated Gradle configuration instructions in [Prerequisites](docs/PREREQUISITES.md) to resolve the issue.
+
+> **Help needed**: If you know a better way to ensure aspects are always applied correctly transparently to the user, please open a PR or issue to discuss!
+
+--
 
 ## Contributing
 

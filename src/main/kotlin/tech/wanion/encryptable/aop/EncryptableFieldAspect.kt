@@ -6,13 +6,12 @@ import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
 import org.aspectj.lang.annotation.Before
 import org.aspectj.lang.annotation.Pointcut
-import org.springframework.stereotype.Component
-import java.lang.reflect.Field
 import tech.wanion.encryptable.EncryptableContext
 import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.mongo.EncryptableMongoRepository
 import tech.wanion.encryptable.mongo.PartOf
 import tech.wanion.encryptable.util.extensions.getField
+import java.lang.reflect.Field
 
 /**
  * # EncryptableFieldAspect
@@ -20,7 +19,6 @@ import tech.wanion.encryptable.util.extensions.getField
  * This aspect allows custom logic to be executed before such fields are accessed,for example, for logging or security purposes.
  */
 @Aspect
-@Component
 @Suppress("UNCHECKED_CAST", "SpringAopPointcutExpressionInspection")
 class EncryptableFieldAspect {
     companion object {

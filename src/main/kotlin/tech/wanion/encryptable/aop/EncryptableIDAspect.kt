@@ -4,7 +4,6 @@ import org.aspectj.lang.JoinPoint
 import org.aspectj.lang.annotation.Aspect
 import org.aspectj.lang.annotation.Before
 import org.aspectj.lang.annotation.Pointcut
-import org.springframework.stereotype.Component
 
 /**
  * # EncryptableIDAspect
@@ -20,7 +19,6 @@ import org.springframework.stereotype.Component
  * IllegalStateException is thrown with a descriptive error message.
  */
 @Aspect
-@Component
 class EncryptableIDAspect {
     companion object {
         const val ENCRYPTABLE_CLASS = "tech.wanion.encryptable.mongo.Encryptable"

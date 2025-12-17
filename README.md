@@ -1,10 +1,10 @@
-# Encryptable
+# Encryptable Framework
 
-Encryptable is an ODM (Object-Document Mapper) with ORM-like relationship management for Spring Data MongoDB, enabling natural one-to-one, one-to-many, and many-to-many associations, cascade delete, and referential integrity with minimal annotations.
+Encryptable is an ORM-like, Zero-Knowledge Data Management Framework for Spring Data MongoDB.
 
-It also delivers world-class zero-knowledge, per-user cryptographic isolation using AES-256-GCM (approved for top-secret data by the NSA and considered unbreakable with current technology), powered by **cryptographic addressing**—a novel architecture that eliminates username→ID mapping tables entirely.
+Enabling Direct Lookup `O(1)` of entities via Cryptographic Addressing.
 
-You can model complex domains in MongoDB as intuitively as in relational databases, with automatic encrypted file storage, passwordless authentication patterns (not provided out-of-the-box), and compliance with top security standards—without ever storing password hashes or secrets in the database.
+Supporting AES-256-GCM field-level encryption, per-user cryptographic isolation, and intelligent relationship management.
 
 ---
 
@@ -56,10 +56,13 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 ---
 
 ## 📦 Installation
-Add the Encryptable dependency to your Gradle build:
+
+### Gradle Kotlin DSL
+Add the Encryptable Starter dependency to your Gradle build:
 ```kotlin
 dependencies {
-    implementation("tech.wanion:encryptable-starter:1.0.0")
+    implementation("tech.wanion:encryptable-starter:1.0.2")
+    aspect("tech.wanion:encryptable-starter:1.0.2")
 }
 ```
 

@@ -67,12 +67,33 @@ publishing {
                     addDep("at.favre.lib", "hkdf", hkdfVersion)
 
                     // AspectJ / AOP
-                    addDep("org.springframework", "spring-aspects", springAspectsVersion)
+                    //addDep("org.springframework", "spring-aspects", springAspectsVersion)
                     addDep("org.aspectj", "aspectjrt", aspectjVersion)
                     addDep("org.aspectj", "aspectjweaver", aspectjVersion)
 
                     // Encryptable
                     addDep("tech.wanion", "encryptable", rootProject.version.toString())
+
+                    // Inject <aspectLibraries> for Maven consumers
+                    val projectNode = asNode()
+                    val buildNode = projectNode.appendNode("build")
+                    val pluginsNode = buildNode.appendNode("plugins")
+                    val aspectjPluginNode = pluginsNode.appendNode("plugin")
+                    aspectjPluginNode.appendNode("groupId", "org.codehaus.mojo")
+                    aspectjPluginNode.appendNode("artifactId", "aspectj-maven-plugin")
+                    aspectjPluginNode.appendNode("version", aspectjVersion)
+                    val configurationNode = aspectjPluginNode.appendNode("configuration")
+                    val aspectLibrariesNode = configurationNode.appendNode("aspectLibraries")
+                    val aspectLibraryNode = aspectLibrariesNode.appendNode("aspectLibrary")
+                    aspectLibraryNode.appendNode("groupId", "tech.wanion")
+                    aspectLibraryNode.appendNode("artifactId", "encryptable")
+                    aspectLibraryNode.appendNode("version", rootProject.version.toString())
+                    configurationNode.appendNode("detail", "true")
+                    configurationNode.appendNode("showWeaveInfo", "true")
+                    val executionsNode = aspectjPluginNode.appendNode("executions")
+                    val executionNode = executionsNode.appendNode("execution")
+                    val goalsNode = executionNode.appendNode("goals")
+                    goalsNode.appendNode("goal", "compile")
                 }
             }
         }
