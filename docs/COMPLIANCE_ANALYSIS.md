@@ -1,5 +1,7 @@
 # Encryptable: Compliance Analysis – Alignment with Major Privacy Standards
 
+> **Note:** Encryptable is not a strict zero-knowledge system. For a full explanation and apology, see [Not Zero-Knowledge](NOT_ZERO_KNOWLEDGE.md).
+
 ## 🏆 Executive Summary
 
 Encryptable is designed to meet—and in some cases, exceed—the requirements of major privacy and security standards, including PCI-DSS, HIPAA, GDPR, SOC 2, and LGPD (Brazil). This document summarizes how Encryptable aligns with these standards, highlighting strengths, limitations, and best practices for compliance.
@@ -7,7 +9,7 @@ Encryptable is designed to meet—and in some cases, exceed—the requirements o
 **Proactive Memory Exposure Mitigation:**
 Encryptable goes beyond standard cryptographic controls by proactively clearing (zerifying) secrets, decrypted data, and derivation material from JVM memory at the end of each request. This memory cleaning strategy minimizes the risk of sensitive data lingering in memory, reduces the attack surface for heap dumps and forensic analysis, and demonstrates best-in-class privacy hygiene for audit and compliance.
 
-*Due to its strong cryptographic foundation, zero-knowledge architecture, data minimization principles, and memory exposure mitigation, Encryptable is likely compliant with many other privacy and data protection regulations worldwide, beyond those listed here. However, users should always verify compliance with local laws and industry-specific requirements.*
+*Due to its strong cryptographic foundation, request-scoped (transient) knowledge architecture, data minimization principles, and memory exposure mitigation, Encryptable is likely compliant with many other privacy and data protection regulations worldwide, beyond those listed here. However, users should always verify compliance with local laws and industry-specific requirements.*
 
 ---
 
@@ -15,7 +17,7 @@ Encryptable goes beyond standard cryptographic controls by proactively clearing 
 
 ### 1️⃣ PCI-DSS (Payment Card Industry Data Security Standard)
 - **Strong encryption:** All sensitive data can be encrypted with keys derived from user credentials.
-- **Zero-knowledge:** The server never stores cryptographic keys or credentials, eliminating insider risk.
+- **Request-scoped (transient) knowledge:** The server never persistently stores cryptographic keys or credentials, eliminating insider risk.
 - **No key custodians:** No administrators or systems have access to keys, meeting and exceeding PCI-DSS 3.5.2.
 - **Key rotation:** Rotation is performed via user password change, which can be aligned with password expiration policies (e.g., 90-180 days), meeting PCI-DSS 3.6.4.
 - **No key storage risk:** No need for key-encrypting keys (KEK) or HSM for key storage.
@@ -51,7 +53,7 @@ Encryptable goes beyond standard cryptographic controls by proactively clearing 
 
 ---
 
-## 🚀 Why Zero-Knowledge Architecture Enhances Compliance
+## 🚀 Why Request-Scoped (Transient) Knowledge Enhances Compliance
 
 ### PCI-DSS Compliance ✅
 

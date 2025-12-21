@@ -15,7 +15,7 @@ Encryptable relies on thread-local / inheritable thread-local state to carry per
 - **Coroutine context switches:** Kotlin coroutines may run continuations on different threads and do not automatically propagate thread-local or inheritable thread-local values across suspension points. ([Kotlin docs](https://kotlinlang.org/docs/coroutine-context-and-dispatchers.html#thread-local-data))
 - **Result:** The framework can lose access to the per-request secret (or see stale values) when work resumes on a different thread, breaking:
   - Change detection (hash comparison relies on consistent thread-local secrets and context)
-  - Per-request zero-knowledge encryption (secret may be missing or wrong)
+  - Per-request request-scoped (transient) knowledge encryption (secret may be missing or wrong)
   - Unsaved-entity tracking and cleanup
 
 > **Bottom line:** Coroutines invalidate Encryptable's core architectural assumptions.

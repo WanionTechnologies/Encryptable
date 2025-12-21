@@ -17,7 +17,7 @@ Secret rotation is the process of changing an entity's cryptographic secret whil
 | **PCI-DSS** | Cryptographic keys must be rotated at least annually | ✅ **NO** - User passwords are not "cryptographic keys" managed by the merchant. PCI-DSS 3.5.2 applies to merchant-managed keys (e.g., DEKs, KEKs). User authentication credentials are covered under 8.x requirements. |
 | **HIPAA** | Encryption key management recommended 90-180 days | ✅ **NO** - HIPAA Security Rule (§164.312(a)(2)(iv)) addresses "encryption and decryption" but doesn't mandate specific rotation schedules. User-controlled passwords fall under access control (§164.312(a)(1)). |
 | **NIST SP 800-57** | Key rotation for symmetric keys based on usage/time | ⚠️ **NUANCED** - NIST distinguishes between system-managed keys and user passwords. User passwords are covered under NIST SP 800-63B (Digital Identity Guidelines), not key management guidelines. |
-| **GDPR** | Data protection measures as needed for security | ✅ **YES - BETTER COMPLIANCE** - User-controlled encryption (zero-knowledge) provides stronger data protection and aligns with "data minimization" principle (Article 5). |
+| **GDPR** | Data protection measures as needed for security | ✅ **YES - BETTER COMPLIANCE** - User-controlled encryption (request-scoped knowledge) provides stronger data protection and aligns with "data minimization" principle (Article 5). |
 | **SOC 2** | Security key management | ⚠️ **DEPENDS** - SOC 2 CC6.1 requires logical access controls. User-controlled secrets with prompt-based rotation meets this requirement. |
 
 ---
@@ -28,7 +28,7 @@ Secret rotation is the process of changing an entity's cryptographic secret whil
 
 - **No key storage risk:** Secrets are never stored, only derived
 - **User-driven rotation:** Users control when their secret changes
-- **Zero-knowledge compliance:** No key custodians, no key compromise
+- **Request-scoped knowledge compliance:** No key custodians, no key compromise
 - **Simple implementation:** Decrypt with old secret, re-encrypt with new
 - **Regulatory alignment:** Meets or exceeds major compliance standards
 
@@ -60,4 +60,4 @@ For technical details, see the [rotateSecret method documentation](../src/main/k
 
 ## 🎬 Conclusion
 
-Secret rotation in Encryptable Framework is secure, user-driven, and compliance-friendly. By leveraging user-controlled secrets and zero-knowledge architecture, the framework eliminates key storage risks and simplifies regulatory alignment for modern applications.
+Secret rotation in Encryptable Framework is secure, user-driven, and compliance-friendly. By leveraging user-controlled secrets and request-scoped knowledge architecture, the framework eliminates key storage risks and simplifies regulatory alignment for modern applications.

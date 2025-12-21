@@ -30,7 +30,7 @@ Encryptable follows [Semantic Versioning 2.0.0](https://semver.org/):
 - ✅ Automated migration tools when feasible
 - ✅ Clear timeline and support policy for older versions
 
-> **Note:** Due to Encryptable's stable cryptographic architecture and zero-knowledge design, it's highly unlikely that breaking changes significant enough to warrant a major version bump (2.0.0+) will occur.\
+> **Note:** Due to Encryptable's stable cryptographic architecture and Transient-knowledge design, it's highly unlikely that breaking changes significant enough to warrant a major version bump (2.0.0+) will occur.\
 > The core framework is intentionally designed for long-term stability.\
 > Most evolution will happen through backward-compatible minor releases (1.x.0).
 

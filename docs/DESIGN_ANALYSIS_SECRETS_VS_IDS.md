@@ -788,8 +788,7 @@ This document provides the architectural rationale for using secrets instead of 
 
 **Secret Management:**
 - **[Secret Rotation](SECRET_ROTATION.md)** - How to rotate secrets securely, performance implications, compliance considerations
-- **[Zero-Knowledge Authentication](concepts/ZERO_KNOWLEDGE_AUTH.md)** - Complete authentication flow with registration, login, and recovery keys
-- **[Zero-Knowledge 2FA](concepts/ZERO_KNOWLEDGE_2FA.md)** - Multi-factor authentication without storing secrets
+- **[Transient-Knowledge Authentication](concepts/TRANSIENT_KNOWLEDGE_AUTH.md)** - Complete authentication flow with registration, login, and recovery keys
 
 **Performance & Scalability:**
 - **[GridFS Performance](../examples/03_GridFS.kt)** - Lazy loading, file size thresholds (>1KB), concurrent access patterns
@@ -797,8 +796,7 @@ This document provides the architectural rationale for using secrets instead of 
 - **[Limitations](LIMITATIONS.md)** - Known performance trade-offs and optimization strategies
 
 **Multi-Device & Recovery:**
-- **[World with Zero Knowledge](concepts/WORLD_WITH_ZERO_KNOWLEDGE.md)** - Multi-device sync, recovery keys, and trusted contacts
-- **[Zero-Knowledge Auth: Recovery Keys](concepts/ZERO_KNOWLEDGE_AUTH.md#-recovery-keys-encrypted-zero-knowledge-strictly-independent-recovery)** - How to implement secure recovery without compromising zero-knowledge
+- **[Transient-Knowledge Auth: Recovery Keys](concepts/TRANSIENT_KNOWLEDGE_AUTH.md#-recovery-keys-encrypted-zero-knowledge-strictly-independent-recovery)** - How to implement secure recovery without compromising zero-knowledge
 
 ### Testing
 

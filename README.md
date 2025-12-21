@@ -1,17 +1,19 @@
 # Encryptable Framework
 
-Encryptable is an ORM-like, Zero-Knowledge Data Management Framework for Spring Data MongoDB.
+Encryptable is an ORM-like, Transient Knowledge Data Management Framework for Spring Data MongoDB.
 
 Enabling Direct Lookup `O(1)` of entities via Cryptographic Addressing.
 
 Supporting AES-256-GCM field-level encryption, per-user cryptographic isolation, and intelligent relationship management.
+
+> **Note:** Encryptable is not a strict zero-knowledge system. For a full explanation and apology, see [Not Zero-Knowledge](docs/NOT_ZERO_KNOWLEDGE.md).
 
 ---
 
 **Main Innovations:**
 - Cryptographic addressing (zero mapping tables)
 - ORM-like relationships in MongoDB
-- Anonymous zero-knowledge architecture
+- Transient Knowledge architecture (request-scoped knowledge)
 - Intelligent change detection
 - And more! Check [Innovations](docs/INNOVATIONS.md) for the full list.
 
@@ -23,9 +25,11 @@ For version history and release notes, see [Changelog](CHANGELOG.md).
 
 ## 🛠️ Scope and Application-Level Features
 
-Encryptable is intentionally focused on providing secure, innovative data management and encryption for MongoDB—including cryptographic addressing, zero-knowledge security, field-level encryption, and ORM-like relationships.\
+Encryptable is intentionally focused on providing secure, innovative data management and encryption for MongoDB—including cryptographic addressing, request-scoped (transient) knowledge security, field-level encryption, and ORM-like relationships.\
 Other advanced features such as multi-tenancy or external KMS integration are left for the developer to implement as needed.\
 This design keeps Encryptable simple, flexible, and easy to integrate into a wide variety of projects.
+
+> **See also:** [Limitations](docs/LIMITATIONS.md) for a full discussion of the security model and the distinction from strict zero-knowledge systems.
 
 ---
 
@@ -61,12 +65,12 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 Add the Encryptable Starter dependency to your Gradle build:
 ```kotlin
 dependencies {
-    implementation("tech.wanion:encryptable-starter:1.0.2")
-    aspect("tech.wanion:encryptable-starter:1.0.2")
+    implementation("tech.wanion:encryptable-starter:1.0.3")
+    aspect("tech.wanion:encryptable-starter:1.0.3")
 }
 ```
 
-**Important:** Do not add `spring-boot-starter-web` or `spring-boot-starter-data-mongodb` to your project dependencies, as this may cause version conflicts or duplicate beans.\
+**Important:** Do not add `spring-boot-starter-webmvc` or `spring-boot-starter-data-mongodb` to your project dependencies, as this may cause version conflicts or duplicate beans.\
 The starter already includes these dependencies in compatible versions.
 
 For all system and runtime requirements, see [Prerequisites](docs/PREREQUISITES.md).
@@ -120,14 +124,14 @@ This project is supported by these amazing sponsors:
 
 Encryptable was created by WanionCane, an independent developer with a passion for privacy, security, and innovative software design.\
 Prior to Encryptable, WanionCane authored several popular Minecraft mods—including UnIDict, Avaritiaddons, and Bigger Crafting Tables—which together have amassed over 100 million downloads on CurseForge.\
-This project was built from the ground up, with AI assistance for documentation and repetitive tasks, to implement zero-knowledge architecture and ORM-like features to the Java and Kotlin ecosystem.
+This project was built from the ground up, with AI assistance for documentation and repetitive tasks, to implement request-scoped (transient) knowledge architecture and ORM-like features to the Java and Kotlin ecosystem.
 
 ---
 
 ## 🤝 Sponsor the author
 If you find Encryptable useful, consider sponsoring the author to help fund maintenance, documentation, and professional security audits.
 
-**Why sponsor?** Professional cryptographic audits ($4-6k) enable enterprise adoption and benefit the entire open-source community. Your support helps make zero-knowledge security accessible to everyone.
+**Why sponsor?** Professional cryptographic audits ($4-6k) enable enterprise adoption and benefit the entire open-source community. Your support helps make strong privacy and request-scoped (transient) knowledge security accessible to everyone.
 
 - [Sponsor on GitHub](https://github.com/sponsors/WanionCane)
 - Or click the "Sponsor" button in this repository.

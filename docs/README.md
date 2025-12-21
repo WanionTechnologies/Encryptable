@@ -38,17 +38,11 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 | [WHY_AVOIDING_STRINGS_IS_HARD_IN_JAVA.md](WHY_AVOIDING_STRINGS_IS_HARD_IN_JAVA.md) | Technical challenges of avoiding String types in Java/Kotlin          |
 
 ### 💡 Concepts (Ideas, Proposals, and Vision)
-| Document | Description |
-|----------|-------------|
-| [DETERMINIST_CRYPTOGRAPHY.md](concepts/DETERMINIST_CRYPTOGRAPHY.md) | Deterministic cryptography for zero-knowledge security |
-| [NO_PASSWORD_STORAGE.md](concepts/NO_PASSWORD_STORAGE.md) | Eliminating password storage risks |
-| [ULTIMATE_SECURITY.md](concepts/ULTIMATE_SECURITY.md) | Achieving ultimate security in data management |
-| [USER_CENTRIC_SECURITY.md](concepts/USER_CENTRIC_SECURITY.md) | User-centric security models and per-user isolation |
-| [WHY_ZERO_KNOWLEDGE_SHOULD_BE_THE_NORM.md](concepts/WHY_ZERO_KNOWLEDGE_SHOULD_BE_THE_NORM.md) | Why zero-knowledge architecture should be the standard |
-| [WORLD_WITH_ZERO_KNOWLEDGE.md](concepts/WORLD_WITH_ZERO_KNOWLEDGE.md) | Vision for a world with zero-knowledge security |
-| [ZERO_KNOWLEDGE_2FA.md](concepts/ZERO_KNOWLEDGE_2FA.md) | Zero-knowledge two-factor authentication concepts |
-| [ZERO_KNOWLEDGE_2FA_APP.md](concepts/ZERO_KNOWLEDGE_2FA_APP.md) | Application-level implementation of zero-knowledge 2FA |
-| [ZERO_KNOWLEDGE_AUTH.md](concepts/ZERO_KNOWLEDGE_AUTH.md) | Zero-knowledge authentication mechanisms |
+| Document | Description                                            |
+|----------|--------------------------------------------------------|
+| [DETERMINIST_CRYPTOGRAPHY.md](concepts/DETERMINIST_CRYPTOGRAPHY.md) | Deterministic cryptography for request-scoped (transient) knowledge security |
+| [NO_PASSWORD_STORAGE.md](concepts/NO_PASSWORD_STORAGE.md) | Eliminating password storage risks                     |
+| [TRANSIENT_KNOWLEDGE_AUTH.md](concepts/TRANSIENT_KNOWLEDGE_AUTH.md) | Transient-knowledge authentication mechanisms          |
 
 ---
 
@@ -56,7 +50,6 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 
 Run the full test suite to ensure Encryptable functions as expected. The tests cover encryption, decryption, data integrity, and performance benchmarks.
 More details [Here](/src/test/kotlin/cards/project/README.md).
-
 
 ---
 
@@ -75,4 +68,4 @@ More details [Here](/src/test/kotlin/cards/project/README.md).
 
 ---
 
-*Empowering secure, zero-knowledge applications for the future.*
+*Empowering secure, request-scoped (transient) knowledge applications for the future.*

@@ -4,4 +4,4 @@ This module is a POM-only Spring Boot "starter" that aggregates the dependencies
 
 Usage (in Gradle Kotlin DSL):
 
-implementation("tech.wanion:encryptable-starter:1.0.0")
+implementation("tech.wanion:encryptable-starter:1.0.3")

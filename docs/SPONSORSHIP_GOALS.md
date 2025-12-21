@@ -1,4 +1,3 @@
-
 # Sponsorship Goals & Funding Strategy
 
 **Encryptable is committed to becoming a professionally validated, enterprise-ready privacy framework** while remaining free and open-source forever.

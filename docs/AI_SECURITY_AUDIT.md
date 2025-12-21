@@ -1,4 +1,4 @@
-# Encryptable Framework - AI Security Audit
+# AI Security Audit: Encryptable Framework
 
 ## Document Information
 
@@ -15,7 +15,7 @@
 ## 🎯 TL;DR (30 seconds)
 
 - ✅ **Production-grade cryptography** - AES-256-GCM, HKDF (same as Signal, TLS 1.3, WireGuard)
-- ✅ **Anonymous zero-knowledge** - NO user data stored (not username, not password, NOTHING)
+- ✅ **Anonymous request-scoped knowledge** - NO user data stored (not username, not password, NOTHING)
 - ✅ **Only attack vector: brute force** - 2^256 search space = computationally impossible
 - ✅ **Quantum-resistant** - 128-bit effective security post-quantum (still infeasible)
 - ✅ **Memory hygiene** - Proactive wiping of secrets, fail-fast if clearing fails
@@ -34,7 +34,7 @@
 
 ### Key Strengths
 1. ✅ Industry-standard cryptography (AES-256-GCM, HKDF, SecureRandom)
-2. ✅ **Anonymous Zero-Knowledge** architecture (INNOVATION: no user data stored - not username, not password, not 2FA secrets, NOTHING)
+2. ✅ **Anonymous request-scoped knowledge** architecture (INNOVATION: no user data stored - not username, not password, not 2FA secrets, NOTHING)
 3. ✅ Authenticated encryption (confidentiality + integrity)
 4. ✅ Secure failure handling (prevents plaintext exposure)
 5. ✅ Minimum 32-character secret enforcement
@@ -357,13 +357,13 @@ Since the attacker does not know which entry is which, they could attempt to "cr
 
 ## 2. Architecture Security
 
-### 2.1 Anonymous Zero-Knowledge Architecture ✅ Excellent (INNOVATION)
+### 2.1 Anonymous Request-Scoped Knowledge Architecture ✅ Excellent (INNOVATION)
 
-**Encryptable introduces "Anonymous Zero-Knowledge" - a stronger security model than traditional zero-knowledge systems.**
+**Encryptable introduces "Anonymous Request-Scoped Knowledge" - a stronger privacy model than traditional server-side approaches.**
 
-#### Traditional Zero-Knowledge vs Anonymous Zero-Knowledge
+#### Traditional Zero-Knowledge vs Anonymous Request-Scoped Knowledge
 
-| What is Stored? | Traditional ZK (Signal, ProtonMail) | Encryptable (Anonymous ZK) |
+| What is Stored? | Traditional Zero-Knowledge (Signal, ProtonMail) | Encryptable (Anonymous Request-Scoped Knowledge) |
 |----------------|-------------------------------------|----------------------------------|
 | Usernames/Email | ✅ Stored | ❌ **NOTHING stored** |
 | Passwords (hashed) | ✅ Stored | ❌ **NOTHING stored** |
@@ -375,7 +375,7 @@ Since the attacker does not know which entry is which, they could attempt to "cr
 
 **Traditional Zero-Knowledge:** Server cannot access content, but knows WHO you are and THAT you have data.
 
-**True Stateless Zero-Knowledge:** Server knows NOTHING - not who you are, not that you exist, not even that your data belongs to a "user". Just cryptographically-addressed encrypted data.
+**True Stateless Request-Scoped Knowledge:** Server knows NOTHING - not who you are, not that you exist, not even that your data belongs to a "user". Just cryptographically-addressed encrypted data.
 
 #### Key Innovation: No User Identity on Server
 
@@ -503,7 +503,7 @@ Encryptable's memory clearing strategy is the most effective and auditable appro
 |--------|-----------|---------------|
 | Database breach | AES-256-GCM field encryption | ✅ Excellent |
 | Secret database leaks | No secrets stored (passwords, 2FA, keys) | ✅ Complete |
-| Insider threats | Zero-knowledge architecture | ✅ Excellent |
+| Insider threats | Request-scoped knowledge architecture | ✅ Excellent |
 | Timing attacks | 2^256 search space | ✅ Excellent |
 | Rainbow tables | HKDF + unique keys | ✅ Excellent |
 | Chosen-plaintext/ciphertext | GCM authenticated encryption | ✅ Excellent |
@@ -542,7 +542,7 @@ As documented in [Limitations](LIMITATIONS.md):
 **GDPR:** ✅ Excellent support
 - Right to erasure (delete by secret makes data irretrievable)
 - Data minimization (no credentials/secrets stored)
-- Privacy by design (zero-knowledge)
+- Privacy by design (request-scoped knowledge)
 
 **HIPAA:** ✅ Strong support
 - AES-256-GCM encryption for ePHI
@@ -560,7 +560,7 @@ As documented in [Limitations](LIMITATIONS.md):
 
 **PCI-DSS Compliance: Unique Achievement**
 
-Encryptable is the first framework to deliver a cryptographic foundation that directly satisfies and exceeds the most challenging PCI-DSS requirements—specifically those related to cryptographic data protection, key management, and data minimization. Its stateless, zero-knowledge architecture (no key custodians, no key storage, authenticated encryption) removes many traditional compliance obstacles. 
+Encryptable is the first framework to deliver a cryptographic foundation that directly satisfies and exceeds the most challenging PCI-DSS requirements—specifically those related to cryptographic data protection, key management, and data minimization. Its stateless, request-scoped knowledge architecture (no key custodians, no key storage, authenticated encryption) removes many traditional compliance obstacles. 
 
 Because the remaining PCI-DSS controls (network, monitoring, access, audit) are much easier to implement when the cryptographic foundation is robust and stateless, Encryptable enables applications to achieve full PCI-DSS compliance with significantly less effort than any previous framework. 
 
@@ -678,7 +678,7 @@ See [MEMORY_HIGIENE_IN_ENCRYPTABLE.md](MEMORY_HIGIENE_IN_ENCRYPTABLE.md) for ful
 Encryptable is rated as **Excellent** for cryptographic security, architecture, and failure handling, and is production-ready for most use cases, pending a professional audit for regulated industries. The framework’s unique strengths include:
 
 - No exploitable cryptographic vulnerabilities identified
-- Anonymous Zero-Knowledge architecture (no user identity or credentials stored)
+- Anonymous request-scoped knowledge architecture (no user identity or credentials stored)
 - Strict minimum secret length and entropy enforcement
 - Proactive memory exposure mitigation: secrets and sensitive data are wiped from JVM memory at the end of each request, with fail-fast enforcement if wiping fails
 - Honest documentation of limitations and clear separation of framework vs. application responsibilities
@@ -691,4 +691,3 @@ Encryptable is rated as **Excellent** for cryptographic security, architecture, 
 **Note:** The proactive memory wiping strategy significantly reduces the risk of accidental secret exposure in memory dumps or forensic analysis, raising the bar for privacy and auditability.
 
 **Bottom line:** Encryptable sets a new standard for privacy and cryptographic safety in JVM applications. With proper application-level controls and compliance validation where required, it is suitable for production deployment.
-

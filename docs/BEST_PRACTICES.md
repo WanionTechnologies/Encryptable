@@ -2,7 +2,7 @@
 
 ## 🌟 Overview
 
-**Encryptable provides the tools for zero-knowledge, but maintaining zero-knowledge is your responsibility.**  
+**Encryptable provides the tools for request-scoped (transient) knowledge, but maintaining strong privacy is your responsibility.**  
 This guide covers essential practices for zerifying secrets, managing derivation material, and designing secure flows that minimize memory exposure—ensuring your application truly protects user privacy and eliminates developer liability.
 
 ---
@@ -68,14 +68,14 @@ markForWiping(username, password, twoFASecret, keyMaterial, secretKey, decrypted
 
 ---
 
-## 🔐 Maintaining Zero-Knowledge Architecture
+## 🔐 Maintaining Request-Scoped (Transient) Knowledge
 
-**Encryptable provides the foundation for zero-knowledge, but achieving true zero-knowledge requires developer discipline.**
+**Encryptable provides the foundation for request-scoped (transient) knowledge, but achieving strong privacy requires developer discipline.**
 
 ### ❌ What NOT to Store in the Database
 
 **Never store these in plaintext:**
-- **Usernames** — If used for key derivation, storing them breaks zero-knowledge
+- **Usernames** — If used for key derivation, storing them breaks request-scoped knowledge
 - **Email addresses** — Unless encrypted with `@Encrypt`
 - **Phone numbers** — Unless encrypted with `@Encrypt`
 - **Passwords** — Should NEVER be stored, even hashed
@@ -84,9 +84,9 @@ markForWiping(username, password, twoFASecret, keyMaterial, secretKey, decrypted
 - **Recovery codes** — Unless encrypted with `@Encrypt`
 - **Any derivation material** — If it's used to derive the secret, don't store it
 
-### ✅ Zero-Knowledge Authentication Pattern
+### ✅ Request-Scoped Knowledge Authentication Pattern
 
-**Traditional (❌ Not Zero-Knowledge):**
+**Traditional (❌ Not Request-Scoped Knowledge):**
 ```kotlin
 // DON'T DO THIS - Stores username and password hash
 @Document
@@ -101,7 +101,7 @@ val user = userRepository.findByUsername(username)
 if (passwordHash == hashPassword(password)) { /* login */ }
 ```
 
-**Zero-Knowledge with Encryptable (✅ Correct):**
+**Request-Scoped Knowledge with Encryptable (✅ Correct):**
 ```kotlin
 // DO THIS - No username or password stored
 @Document
@@ -120,7 +120,7 @@ markForWiping(secret, username, password, twoFA)
 if (user != null) { /* login successful */ }
 ```
 
-### 🎯 Key Principles for Zero-Knowledge
+### 🎯 Key Principles for Request-Scoped (Transient) Knowledge
 
 1. **Secrets are addresses, not authentication credentials**
    - Use `findBySecretOrNull(secret)` instead of username/password comparison
@@ -139,9 +139,9 @@ if (user != null) { /* login successful */ }
      - Identify users? ❌ No (no usernames/emails)
      - Decrypt data? ❌ No (keys not stored)
      - Correlate entities? ❌ No (IDs are secret-derived)
-   - If you answer "yes" to any, you're not zero-knowledge
+   - If you answer "yes" to any, you're not request-scoped knowledge
 
-### 🧪 Zero-Knowledge Checklist
+### 🧪 Request-Scoped Knowledge Checklist
 
 Before deploying, ask yourself:
 
@@ -154,7 +154,7 @@ Before deploying, ask yourself:
 
 ### 📚 Related Documentation
 
-- [Zero-Knowledge Authentication Patterns](https://github.com/WanionTechnologies/Encryptable/blob/main/docs/concepts/ZERO_KNOWLEDGE_AUTH.md)
-- [Zero-Knowledge 2FA Implementation](https://github.com/WanionTechnologies/Encryptable/blob/main/docs/concepts/ZERO_KNOWLEDGE_2FA.md)
+- [Request-Scoped Knowledge Authentication Patterns](https://github.com/WanionTechnologies/Encryptable/blob/main/docs/concepts/ZERO_KNOWLEDGE_AUTH.md)
+- [Request-Scoped Knowledge 2FA Implementation](https://github.com/WanionTechnologies/Encryptable/blob/main/docs/concepts/ZERO_KNOWLEDGE_2FA.md)
 - [User-Centric Security Model](https://github.com/WanionTechnologies/Encryptable/blob/main/docs/concepts/USER_CENTRIC_SECURITY.md)
 

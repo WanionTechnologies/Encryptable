@@ -75,7 +75,7 @@ fun login(username: String, password: String): User? {
 - If the credentials are correct, the correct UUID is derived and the entity is found and decrypted.
 - If the credentials are incorrect, no entity is found and no data is decrypted.
 
-> **Note:** The following is a simplified example for illustration purposes only. For actual production authentication flows and best practices, refer to [ZERO_KNOWLEDGE_AUTH.md](ZERO_KNOWLEDGE_AUTH.md).
+> **Note:** The following is a simplified example for illustration purposes only. For actual production authentication flows and best practices, refer to [Transient-Knowledge Authentication](TRANSIENT_KNOWLEDGE_AUTH.md).
 
 ### Example
 ```kotlin
@@ -90,7 +90,7 @@ val user = db.findBySecretOrNull(secret)
 
 - **Eliminates password hash theft risk**
 - **No offline brute-force attacks on hashes**
-- **Zero-knowledge authentication**
+- **Request-scoped (transient) knowledge authentication**
 - **Per-user cryptographic isolation**
 - **No credential storage in the database**
 
@@ -98,4 +98,4 @@ val user = db.findBySecretOrNull(secret)
 
 ## 🎬 Conclusion
 
-Encryptable Framework sets a new standard for authentication security by eliminating password hash storage entirely. This approach removes a major attack vector and enables true zero-knowledge authentication for modern applications.
+Encryptable Framework sets a new standard for authentication security by eliminating password hash storage entirely. This approach removes a major attack vector and enables strong request-scoped (transient) knowledge authentication for modern applications.

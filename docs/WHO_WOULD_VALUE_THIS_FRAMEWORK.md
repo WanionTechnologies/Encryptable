@@ -6,13 +6,13 @@ This document describes the types of organizations, teams, and professionals who
 
 ### 1. Security-Focused Engineering Teams
 - Teams building applications where data privacy and cryptographic isolation are critical.
-- Developers working on zero-knowledge systems or cryptographic addressing solutions.
+- Developers working on request-scoped (transient) knowledge systems or cryptographic addressing solutions.
 
 ### 2. Compliance-Driven Organizations
 - Companies subject to regulations such as HIPAA, PCI-DSS, or GDPR.
 - Enterprises needing field-level encryption and auditability for sensitive data.
 
-### 3. SaaS Companies Needing Zero-Knowledge Architecture
+### 3. SaaS Companies Needing Transient Knowledge Architecture
 - Multi-tenant SaaS platforms requiring per-user data isolation and zero-trust security.
 - Startups and established vendors offering privacy-first products.
 
@@ -30,7 +30,7 @@ This document describes the types of organizations, teams, and professionals who
 
 ## Why Value This Framework?
 - Advanced cryptographic primitives (AES-256-GCM, HKDF)
-- Cryptographic addressing and zero-knowledge architecture
+- Cryptographic addressing and request-scoped (transient) knowledge architecture
 - Field-level encryption and per-user isolation
 - Production-ready, extensible, and well-documented
 - Suitable for compliance, privacy, and security innovation

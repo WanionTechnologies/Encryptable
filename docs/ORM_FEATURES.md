@@ -1,7 +1,5 @@
 # ORM-Like Features in Encryptable
 
-## 🏗️ Overview
-
 Encryptable brings advanced **ORM-like (Object-Relational Mapping) features** to MongoDB, enabling developers to model complex relationships and data integrity constraints with the simplicity and power typically found in relational database frameworks. This document details these features, including relationship modeling, the `@PartOf` annotation, cascade delete, and best practices for using these capabilities securely and efficiently.
 
 ---

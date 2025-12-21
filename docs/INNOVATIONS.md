@@ -1,7 +1,7 @@
 # Encryptable: Technical Innovations & Novel Contributions
 
 Encryptable is an ODM (Object-Document Mapper) for MongoDB, distinguished by its ORM-like relationship management and advanced cryptographic features.\
-This combination brings relational-style modeling and zero-knowledge security to document databases.
+This combination brings relational-style modeling and request-scoped ("Transient Knowledge") security to document databases.
 
 ## 🏯 Executive Summary
 
@@ -11,10 +11,10 @@ This document highlights the novel technical contributions that distinguish Encr
 **Key Innovation Areas:**
 0. **CID, a Compact, URL-Safe Identifier** (22-character Base64 alternative to UUID)
 1. **Cryptographic Addressing with HKDF-Based Deterministic CID** (Novel Architecture for MongoDB)
-2. **Deterministic Cryptography for Zero-Knowledge, Stateless Security** (New!)
-3. **Anonymous Zero-Knowledge** (INNOVATION: No user identity, credentials, or metadata stored on server)
+2. **Deterministic Cryptography for Stateless, Transient-Knowledge Security** (New!)
+3. **Anonymous Data Model** (INNOVATION: No user identity, credentials, or metadata required on server)
 4. **ORM-Like Relationship Management for MongoDB (ODM)** (One-to-One, One-to-Many, Many-to-Many, Cascade Delete)
-5. **Capability URLs – Secure, Shareable, Zero-Knowledge Access** (Novel Application)
+5. **Capability URLs – Secure, Shareable, Transient-Knowledge Access** (Novel Application)
 6. **Automatic Field-Level Encryption with Per-User Isolation** (Unique Combination)
 7. **Intelligent Change Detection via Field Hashing** (Novel Approach)
 8. **Encrypted GridFS with Lazy Loading** (Unique Integration)
@@ -38,11 +38,11 @@ The CID can be safely stored in the database without compromising the encryption
 
 ### **Why This Is Innovative**
 
-Cryptographic Addressing is a novel approach for MongoDB that derives entity IDs directly from user secrets using HKDF, enabling stateless, zero-knowledge data access.
+Cryptographic Addressing is a novel approach for MongoDB that derives entity IDs directly from user secrets using HKDF, enabling stateless, request-scoped (transient knowledge) data access.
 
 - **No mapping tables, no lookups, no persistent storage of IDs.**
 - **The address of the data is the secret itself, computed on demand.**
-- **Stateless, zero-knowledge, per-user cryptographic isolation is achieved by design.**
+- **Stateless, request-scoped, per-user cryptographic isolation is achieved by design.**
 - **The server is fundamentally incapable of leaking, reconstructing, or resetting user data.**
 - **O(1) User Lookups via Cryptographic Addressing:** Traditional systems require looking up users by username/email (O(log n) with index), then retrieving their data. Encryptable eliminates this step entirely—the secret directly computes the CID (primary key), enabling instant O(1) access without any username/email lookup table.
 - **Reduced Database Load:** No secondary indexes or mapping tables are needed for user lookups. Every access is a direct primary key lookup, maximizing database efficiency.
@@ -77,7 +77,7 @@ HKDFID({ secret, sourceClass ->
   - **Collision Resistance:** CID provides 2^32 (over 4.2 billion times) more collision resistance than MongoDB's ObjectId. At 1 million operations per second, you'd need 585,000 years to reach a 50% collision probability—making accidental collisions mathematically impossible in any real-world scenario. For detailed mathematical analysis, see [CID Collision Analysis](CID_COLLISION_ANALYSIS.md).
 - **Automatic Entity Class Namespacing:** The entity class name is included in the HKDF derivation, so the same secret yields different CIDs for different entity types.
 - **Deterministic but Unpredictable:** Same secret + same class = same CID (deterministic); different secrets = different CIDs (unpredictable without secret).
-- **Stateless Addressing:** No mapping or storage of IDs is required. The CID is computed on-demand from the secret, enabling stateless, zero-knowledge addressing.
+- **Stateless Addressing:** No mapping or storage of IDs is required. The CID is computed on-demand from the secret, enabling stateless, request-scoped (transient knowledge) addressing.
 
 ### **Comparison with Existing Solutions**
 
@@ -112,34 +112,32 @@ See the full technical overview in [Cryptographic Addressing: Technical Overview
 
 ---
 
-## 🔑 Innovation #2: Deterministic Cryptography for Zero-knowledge, Stateless Security
+## 🔑 Innovation #2: Deterministic Cryptography for Transient Knowledge, Stateless Security
 
-### **What Makes This Unique**
-
-This approach leverages deterministic cryptography to achieve true zero-knowledge, stateless security.\
-All cryptographic keys are derived solely from user credentials and a mandatory zero-knowledge 2FA secret, using a secure KDF (such as HKDF).\
+This approach leverages deterministic cryptography to achieve strong request-scoped (transient knowledge), stateless security.\
+All cryptographic keys are derived solely from user credentials and a mandatory request-scoped 2FA secret, using a secure KDF (such as HKDF).\
 No secrets or keys are ever stored, reconstructed, or recoverable by the server.\
 The 2FA secret is always the final, required layer of entropy, ensuring that only the user can access their data.
 
-> **Note:** The Encryptable provides the foundation for a zero-knowledge system, but achieving true zero-knowledge in practice requires developers to consistently use `@HKDFId` and `@Encrypt` for all sensitive fields. Discipline and correct usage are essential to maintain the zero-knowledge property throughout the application.
+> **Note:** Encryptable provides the foundation for a transient knowledge system, but achieving strict request-scoped knowledge in practice requires developers to consistently use `@HKDFId` and `@Encrypt` for all sensitive fields. Discipline and correct usage are essential to maintain the transient knowledge property throughout the application.
 
 ### **Relationship to Cryptographic Addressing**
 
 Deterministic cryptography is closely related to the concept of cryptographic addressing (see Innovation #1).\
 Both rely on deriving identifiers and cryptographic keys on-the-fly from user secrets, eliminating the need for persistent key or mapping storage.\
 In cryptographic addressing, entity IDs are deterministically derived from secrets, while in deterministic cryptography, all encryption and decryption keys are derived in the same way.\
-This synergy enables a fully stateless, zero-knowledge architecture.
+This synergy enables a fully stateless, transient knowledge architecture.
 
 ### **The Innovation**
 
 - **No Key Storage:** The server never stores or learns any user secret or cryptographic key.
 - **On-the-Fly Derivation:** All keys are derived on demand from user credentials and the 2FA secret.
 - **Stateless Security:** The server remains stateless with respect to secrets; all sensitive operations require user participation.
-- **Zero-Knowledge:** The server cannot decrypt or access user data without the user's active input, including both credentials and the 2FA secret.
+- **Transient Knowledge:** The server cannot decrypt or access user data without the user's active input, including both credentials and the 2FA secret, and secrets are only present in memory for the duration of a request.
 
 ### **Why This Is Innovative**
 
-- **True Zero-Knowledge:** No secrets or keys are ever stored or reconstructable by the server.
+- **Request-Scoped Knowledge:** No secrets or keys are ever stored or reconstructable by the server beyond the request scope. Secrets exist only ephemerally, for the duration of a request.
 - **Breach Resistance:** Even if the server is compromised, attackers cannot access user data without both the user's credentials and the 2FA secret.
 - **User-Centric Security:** Only the user can access or recover their data; all cryptographic operations require user input, including the 2FA secret.
 - **Insider Threat Elimination:** No admin or privileged user can access or reset user secrets.
@@ -150,21 +148,21 @@ See more about this concept [Deterministic Cryptography](concepts/DETERMINIST_CR
 
 ---
 
-## 🏛️ Innovation #3: Anonymous Zero-Knowledge (Architecture Capability)
+## 🏛️ Innovation #3: Anonymous Data Model with Transient Knowledge
 
 ### **What Makes This Unique**
 
-**Encryptable enables "Anonymous Zero-Knowledge" - a stronger security model than traditional zero-knowledge systems.**
+**Encryptable enables an "Anonymous Data Model" with Transient Knowledge—a strong privacy model that goes beyond traditional request-scoped knowledge systems.**
 
-Most systems claiming "zero-knowledge" (Signal, ProtonMail, etc.) protect **content** but still store user identity, credentials, and metadata. Encryptable enables you to go further: **the server can store NOTHING about users** - no identity, no credentials, no metadata, no way to identify who users are.
+Most systems claiming "zero-knowledge" (Signal, ProtonMail, etc.) protect **content** but still store user identity, credentials, and metadata. Encryptable enables you to go further: **the server can store NOTHING about users**—no identity, no credentials, no metadata, no way to identify who users are.
 
-> **Important:** Anonymous Zero-Knowledge is a **capability** that Encryptable enables, not a mandatory requirement. Developers can choose to store user details (usernames, emails, etc.) if their application requires it—though this is **not recommended** for maximum privacy. If you do store user details, using `@Encrypt` on those fields maintains the zero-knowledge property: the server stores encrypted data it cannot read, preserving confidentiality while allowing you to meet your application's requirements.
+> **Important:** This anonymous, transient-knowledge model is a **capability** that Encryptable enables, not a mandatory requirement. Developers can choose to store user details (usernames, emails, etc.) if their application requires it—though this is **not recommended** for maximum privacy. If you do store user details, using `@Encrypt` on those fields ensures the server stores only encrypted data it cannot read, preserving confidentiality while allowing you to meet your application's requirements.
 
-### **Traditional Zero-Knowledge vs Anonymous Zero-Knowledge**
+### **Traditional Zero-Knowledge vs Transient Knowledge (Request-Scoped)**
 
-**When using Encryptable's Anonymous Zero-Knowledge capability (storing no user identity):**
+**When using Encryptable's Anonymous Data Model (storing no user identity):**
 
-| What is Stored? | Traditional ZK (Signal, ProtonMail) | Encryptable (Anonymous ZK Capability) |
+| What is Stored? | Traditional Zero-Knowledge (Signal, ProtonMail) | Encryptable (Anonymous, Transient Knowledge) |
 |----------------|-------------------------------------|----------------------------------|
 | Usernames/Email | ✅ Stored | ❌ **NOTHING stored** |
 | Passwords (hashed) | ✅ Stored | ❌ **NOTHING stored** |
@@ -183,15 +181,15 @@ Most systems claiming "zero-knowledge" (Signal, ProtonMail, etc.) protect **cont
 | Account Metadata | ✅ Stored **encrypted** (server can't read) |
 | User Data (encrypted) | ✅ Can't decrypt |
 
-> **Note:** Even if you store encrypted user details, the server cannot read them without the user's secret. This maintains zero-knowledge for content, though the server knows encrypted records exist (unlike pure Anonymous ZK where the server has no concept of users at all).
+> **Note:** Even if you store encrypted user details, the server cannot read them without the user's secret. This maintains confidentiality for content, though the server knows encrypted records exist (unlike pure anonymous mode where the server has no concept of users at all).
 
-**Traditional Zero-Knowledge:** "We can't read your messages" - Server cannot access content, but knows WHO you are and THAT you have data.
+**Traditional Zero-Knowledge:** "We can't read your messages"—Server cannot access content, but knows WHO you are and THAT you have data.
 
-**Anonymous Zero-Knowledge:** "We don't know you exist" - Server knows NOTHING about users. Just cryptographically-addressed encrypted data.
+**Anonymous, Transient Knowledge:** "We don't know you exist"—Server knows NOTHING about users. Just cryptographically-addressed encrypted data, and secrets are only present in memory for the duration of a request (transient knowledge).
 
 ### **The Innovation: Server Knows Nothing (or Only Encrypted Data)**
 
-**Approach 1: Pure Anonymous Zero-Knowledge (Recommended for Maximum Privacy)**
+**Approach 1: Pure Anonymous Data Model (Recommended for Maximum Privacy)**
 ```
 Secret → HKDF → CID → Database stores:
   - CID: "dGVzdF9jaWRfZXhhbXBsZQ" (cryptographic address)
@@ -212,220 +210,9 @@ Secret → HKDF → CID → Database stores:
 → Can count records, but cannot identify WHO or correlate data
 ```
 
-**Example: Storing Encrypted User Details**
-```kotlin
-@Document(collection = "users")
-class User : Encryptable<User>() {
-    @HKDFId
-    override var id: CID? = null
-    
-    @Encrypt  // Server stores encrypted, cannot read
-    var email: String? = null
-    
-    @Encrypt  // Server stores encrypted, cannot read
-    var displayName: String? = null
-    
-    @Encrypt
-    var sensitiveData: String? = null
-}
-```
-
-**Comparison with Traditional Systems:**
-
-```
-Traditional System:
-User "alice@email.com" → Database stores:
-  - Username: "alice@email.com" (plaintext)
-  - Password: bcrypt_hash(password)
-  - 2FA: TOTP_secret
-  - Data: encrypted_messages
-  
-→ Server knows: WHO you are, THAT you exist, WHEN you last logged in
-```
-
-**Security Benefits by Approach:**
-
-**Pure Anonymous Zero-Knowledge** (no user details stored):
-- Server literally cannot identify users
-- Server cannot count users
-- Server cannot track activity
-- Server cannot know who owns what data
-- Server cannot correlate data between "users" (no user concept exists)
-
-**Encrypted User Details** (with `@Encrypt`):
-- Server knows encrypted records exist, but cannot read them
-- Server can count records (but not identify who)
-- Server cannot decrypt usernames, emails, or metadata
-- Data remains confidential and zero-knowledge for content
-- Better than traditional systems, but less anonymous than pure approach
-
-### **Why This Is Innovative**
-
-**1. Ultimate Breach Resistance**
-
-**Pure Anonymous Zero-Knowledge:**
-Even with full database access, an attacker has:
-- ❌ No usernames to target
-- ❌ No passwords to crack (not even hashes)
-- ❌ No 2FA secrets to steal
-- ❌ No account metadata
-- ✅ Only meaningless CIDs and encrypted data
-
-**With Encrypted User Details:**
-Even with full database access, an attacker has:
-- ⚠️ Encrypted usernames (useless without secret)
-- ❌ No passwords to crack (never stored)
-- ❌ No 2FA secrets to steal (not stored)
-- ⚠️ Encrypted metadata (useless without secret)
-- ✅ Zero plaintext information
-
-**2. Perfect Privacy**
-
-**Pure Anonymous Zero-Knowledge:**
-The server is fundamentally incapable of:
-- Knowing who you are
-- Counting users
-- Building user profiles
-- Tracking behavior patterns
-- Selling data (no data to sell)
-
-**With Encrypted User Details:**
-The server is fundamentally incapable of:
-- Reading your identity (encrypted)
-- Reading metadata (encrypted)
-- Building useful profiles (data encrypted)
-- Selling meaningful data (everything encrypted)
-- Better privacy than traditional systems
-
-**3. Regulatory Advantage**
-
-**Pure Anonymous Zero-Knowledge:**
-- **GDPR:** No personal data stored → Minimal data controller responsibilities
-- **HIPAA:** No patient identifiers → Greatly reduced compliance scope  
-- **PCI-DSS:** No cardholder data → May not be in scope
-
-**With Encrypted User Details:**
-- **GDPR:** Personal data encrypted at rest → Strong data protection measures (Article 32)
-- **HIPAA:** ePHI encrypted → Reduced breach notification requirements (Safe Harbor)
-- **PCI-DSS:** Data encrypted → Reduced scope for cardholder data environment
-
-**4. Attack Surface Elimination**
-
-**Pure Anonymous Zero-Knowledge** - Entire attack classes become impossible:
-- ❌ No credential stuffing (no credentials exist)
-- ❌ No account enumeration (no accounts exist)
-- ❌ No session hijacking (no sessions exist)
-- ❌ No password database leaks (no passwords exist)
-- ❌ No admin password resets (nothing to reset)
-
-**With Encrypted User Details** - Attack surface greatly reduced:
-- ⚠️ Credential stuffing ineffective (encrypted usernames, no passwords stored)
-- ⚠️ Account enumeration yields only encrypted data
-- ❌ No password database leaks (never stored)
-- ❌ No admin password resets (nothing to reset)
-- ✅ All attacks yield only encrypted, useless data
-- ❌ No account enumeration (no accounts exist)
-- ❌ No session hijacking (no sessions exist)
-- ❌ No password database leaks (no passwords exist)
-- ❌ No admin password resets (nothing to reset)
-
-### **Relationship to Cryptographic Addressing & Deterministic Cryptography**
-
-Anonymous Zero-Knowledge is the **architectural culmination** of innovations #1 and #2:
-
-- **Innovation #1 (Cryptographic Addressing)** provides the mechanism: CIDs derived from secrets
-- **Innovation #2 (Deterministic Cryptography)** provides the keys: encryption keys derived from secrets
-- **Innovation #3 (Anonymous Zero-Knowledge)** is the capability: Option to completely eliminate user identity from the server
-
-This trilogy creates a fundamentally different architecture where the server can be reduced to a pure cryptographically-addressed data store with zero knowledge of user identities—or, if your application requires it, store encrypted user details that the server cannot read.
-
-### **Security Model**
-
-**Pure Anonymous Zero-Knowledge:**
-```
-User Side:
-  Secret (known only to user)
-    ↓ HKDF
-  ├─→ CID (database address)
-  └─→ Encryption Key (data protection)
-
-Server Side:
-  CID (meaningless without secret)
-    ↓ Database lookup
-  Encrypted Data (useless without key)
-
-Server knows: Nothing useful
-User knows: Everything
-```
-
-**With Encrypted User Details:**
-```
-User Side:
-  Secret (known only to user)
-    ↓ HKDF
-  ├─→ CID (database address)
-  └─→ Encryption Key (data protection)
-
-Server Side:
-  CID (meaningless without secret)
-    ↓ Database lookup
-  ├─→ Encrypted username (useless without key)
-  ├─→ Encrypted metadata (useless without key)
-  └─→ Encrypted data (useless without key)
-
-Server knows: Encrypted records exist, but cannot read any content
-User knows: Everything
-```
-
-**The server is completely anonymous:**
-- No user identity
-- No authentication state  
-- No session state
-- No metadata
-- Cannot identify or count users
-- Just a cryptographically-addressed encrypted data store
-
-### **Real-World Impact**
-
-This isn't just "more secure" - it's a **paradigm shift**:
-
-- **Traditional systems:** Trust the server to protect your identity and credentials
-- **Encryptable (Pure Anonymous ZK):** Server literally has nothing to protect - it doesn't know you exist
-- **Encryptable (Encrypted Details):** Server stores encrypted data it cannot read - maintains zero-knowledge for content
-
-**Example: Healthcare Application**
-
-**Traditional System:**
-- Server stores: patient names, medical record numbers, encrypted health data
-- If breached: Patient identities + encrypted data (can target individuals, extort, sell on dark web)
-
-**Encryptable - Pure Anonymous Zero-Knowledge:**
-- Server stores: CIDs and encrypted blobs - no way to identify patients
-- If breached: Random CIDs + encrypted blobs (completely useless without secrets)
-
-**Encryptable - With Encrypted Patient Details:**
-- Server stores: CIDs, encrypted patient names, encrypted MRNs, encrypted health data
-- If breached: All data encrypted - attacker cannot read names, MRNs, or health data without secrets
-- Better than traditional (no plaintext), less anonymous than pure approach
-
-### **Developer Benefits**
-
-**Pure Anonymous Zero-Knowledge:**
-1. **Maximum Reduced Liability:** Can't leak what you don't store
-2. **Maximum Simplified Compliance:** Zero personal data = minimal regulatory burden
-3. **Eliminated Responsibilities:** No password resets, no account recovery, no admin access
-4. **Attack-Resistant by Design:** Most attack vectors simply don't exist
-
-**With Encrypted User Details:**
-1. **Strong Data Protection:** All sensitive data encrypted, server cannot read
-2. **Compliance Support:** Encrypted data at rest meets GDPR, HIPAA requirements
-3. **Flexible Architecture:** Store what you need, encrypt what's sensitive
-4. **Zero-Knowledge for Content:** Server knows records exist but cannot read them
-
-### **Learn More**
-
-- See [AI Security Audit](AI_SECURITY_AUDIT.md) for detailed security analysis
-- See [Zero-Knowledge Concepts](concepts/ZERO_KNOWLEDGE_AUTH.md) for implementation patterns
+**Summary:**
+- Encryptable does not provide strict zero-knowledge in the cryptographic sense, as secrets are present in memory for the duration of a request (transient knowledge), but it enables a strong privacy model where the server can be completely unaware of user identities and data content.
+- This approach minimizes risk and maximizes privacy, while being transparent about the actual security guarantees.
 
 ---
 
@@ -472,7 +259,7 @@ This innovation eliminates one of the main reasons to choose SQL over MongoDB, e
 
 ---
 
-## 🌐 Innovation #5: Capability URLs – Secure, Shareable, Zero-Knowledge Access
+## 🌐 Innovation #5: Capability URLs – Secure, Shareable, Transient-Knowledge Access
 
 A powerful application of cryptographic addressing is the use of "capability URLs." In this model, the URL itself contains all the information required to access and decrypt a resource—typically, a high-entropy secret or token derived from user credentials or generated randomly.
 
@@ -488,7 +275,7 @@ A powerful application of cryptographic addressing is the use of "capability URL
 - URLs should be transmitted only over secure channels (HTTPS) and never exposed in public logs or referrers.
 
 **Relation to Encryptable:**
-- Encryptable's cryptographic addressing makes capability URLs easy to implement: the secret in the URL is used directly to derive the cryptographic key and CID, enabling instant, zero-knowledge access to the resource.
+- Encryptable's cryptographic addressing makes capability URLs easy to implement: the secret in the URL is used directly to derive the cryptographic key and CID, enabling instant, request-scoped (transient knowledge) access to the resource.
 - This approach is ideal for "anonymous" sharing scenarios, where access control is based on possession of the URL rather than user identity.
 
 **Best Practices:**
@@ -496,7 +283,7 @@ A powerful application of cryptographic addressing is the use of "capability URL
 - Consider implementing expiration, revocation, or usage limits for capability URLs to reduce risk if they are leaked.
 - Educate users about the importance of keeping these URLs private.
 
-> Capability URLs, when combined with Encryptable's Cryptographic addressing, provide a simple yet powerful way to enable secure, user-friendly sharing of encrypted resources—without the need for traditional authentication or access control lists.
+> Capability URLs, when combined with Encryptable's cryptographic addressing, provide a simple yet powerful way to enable secure, user-friendly sharing of encrypted resources—without the need for traditional authentication or access control lists.
 
 ---
 
@@ -504,7 +291,7 @@ A powerful application of cryptographic addressing is the use of "capability URL
 
 ### **What Makes This Unique**
 
-**Unique Combination:** While field-level encryption exists, nobody else combines automatic encryption + per-user isolation + zero configuration in a single annotation.
+**Unique Combination:** While field-level encryption exists, nobody else combines automatic encryption + per-user isolation + zero-configuration in a single annotation.
 
 ### **The Innovation**
 

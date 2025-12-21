@@ -12,21 +12,23 @@ While this document will detail various technical constraints, it's important to
 - ✅ **Genuine innovation** - Not just an incremental improvement.
 - ✅ **Solves real pain** - Password storage liability is a billion-dollar problem
 - ✅ **Performance gains** - O(1) lookups provide measurable 5-10x database throughput improvements
-- ✅ **Zero-knowledge by default** - Eliminates entire categories of security breaches
+- ✅ **Request-scoped knowledge ("Transient Knowledge") by default** - Eliminates entire categories of security breaches
 
 **Market opportunity:**
 - Backend security is a **$50+ billion market** (Gartner)
 - Data breach costs average **$4.45 million per incident** (IBM 2023)
 - GDPR fines can reach **€20 million or 4% of global revenue**
-- Zero-knowledge solutions are **under-served** in the JVM ecosystem
+- Transient knowledge solutions are **under-served** in the JVM ecosystem
 
 **Most of the limitations you'll read below are features, not bugs:**
 - "No soft delete" = True GDPR compliance (right to be forgotten)
-- "Cannot query encrypted fields" = Proof of real zero-knowledge
+- "Cannot query encrypted fields" = Proof of real request-scoped knowledge
 - "No automated rotation" = Genuine secret security (not stored anywhere)
 - "Class names immutable" = Cryptographic integrity guarantee
 
 **Bottom line:** Encryptable's limitations prove it's genuinely secure. The market will pay premium prices for real security, not security theater.
+
+> **Note:** Encryptable implements a 'transient knowledge' (request-scoped knowledge) model: secrets and keys are only present in memory for the duration of a request or operation. This is not strict 'zero-knowledge' in the cryptographic sense, but provides strong privacy guarantees by ensuring the server never persistently retains secrets or keys. For a full explanation and apology, see [Not Zero-Knowledge](NOT_ZERO_KNOWLEDGE.md).
 
 See [Innovations](INNOVATIONS.md) for detailed technical innovations, and [Sponsorship Goals](SPONSORSHIP_GOALS.md) for how we will be building a sustainable ecosystem around these innovations.
 
@@ -46,10 +48,10 @@ Now, with that context in mind, let's examine the specific technical and platfor
 - **Memory Sanitization & JVM Limitations:** JVM memory model makes it impossible to fully erase secrets (see [Why Avoiding Strings for Secrets Is (Nearly) Impossible in Java](WHY_AVOIDING_STRINGS_IS_HARD_IN_JAVA.md))
 - **Class/package immutability:** Cannot rename or move entity classes after data exists; class name and package are used in cryptographic derivation
 - **Limited Identifier support:** Only `CID` identifiers are supported (no UUID, int, etc.)
-- **Secret loss = data loss:** If a user loses their secret, their data is permanently inaccessible; true zero-knowledge means the server cannot recover or reset secrets
+- **Secret loss = data loss:** If a user loses their secret, their data is permanently inaccessible; true request-scoped knowledge means the server cannot recover or reset secrets
 - **Repository methods:** Only `deleteById` is supported for temporary or non-secret-based entities in `EncryptableMongoRepositoryImpl`. Other standard Spring Data methods (`insert`, `findById`, `findAll`, etc.) remain unsupported; use secret-based methods for all sensitive data
 - **No soft delete:** Only hard deletion is supported; soft delete is excluded to uphold the "right to be forgotten."
-- **Migration away from Encryptable:** Lazy migration possible but slow; requires dual systems and depends on user login frequency; bulk migration impossible without breaking zero-knowledge
+- **Migration away from Encryptable:** Lazy migration possible but slow; requires dual systems and depends on user login frequency; bulk migration impossible without breaking request-scoped knowledge
 - **Querying encrypted fields:** Cannot query or filter encrypted fields at the database level; must query in-memory after decryption
 - **Indexing encrypted fields:** Cannot index encrypted fields; only unencrypted fields can be indexed
 - **Performance characteristics:** 10–15% overhead due to encryption/decryption; hardware-accelerated on modern processors (AES-NI since 2010+, SHA extensions since 2019+)
@@ -309,7 +311,7 @@ This prevents:
 
 Encryptable is intentionally designed to support only identifiers of type `CID`.\
 This is a core architectural decision and is not planned to change.\
-This requirement arises directly from the framework's cryptographic addressing innovation: the CID is deterministically derived from user secrets using cryptographic functions, enabling stateless, zero-knowledge access and O(1) lookups.
+This requirement arises directly from the framework's cryptographic addressing innovation: the CID is deterministically derived from user secrets using cryptographic functions, enabling stateless, request-scoped knowledge access and O(1) lookups.
 Supporting other ID types would undermine these guarantees and the unique architecture of Encryptable.
 
 > **Note:** Earlier versions of Encryptable used MongoDB ObjectIds, but the collision risk was higher than desired. UUIDs were considered for their uniqueness, but their size was unnecessarily large for the framework's needs. The CID format was created to provide a compact, 128-bit identifier with a much smaller representation than UUID, while maintaining strong collision resistance and supporting cryptographic addressing.
@@ -326,9 +328,9 @@ Supporting other ID types would undermine these guarantees and the unique archit
 
 ## 🔑 Secret Loss = Data Loss
 
-**If a user loses their secret, their data is permanently inaccessible.** This is by design and a fundamental characteristic of true zero-knowledge architecture.
+**If a user loses their secret, their data is permanently inaccessible.** This is by design and a fundamental characteristic of true request-scoped knowledge architecture.
 
-Encryptable implements genuine zero-knowledge encryption, which means:
+Encryptable implements genuine transient knowledge encryption, which means:
 - The server never stores user secrets
 - The server cannot reconstruct secrets from stored data
 - The server cannot reset or recover secrets
@@ -336,7 +338,7 @@ Encryptable implements genuine zero-knowledge encryption, which means:
 
 **Why this limitation exists:**
 
-True zero-knowledge architecture requires that the server has **zero knowledge** of user secrets. If the server could recover or reset secrets, it would mean the server has access to (or can derive) the secret—which would completely undermine the zero-knowledge guarantee.
+True request-scoped knowledge architecture requires that the server has **no persistent knowledge** of user secrets. If the server could recover or reset secrets, it would mean the server has access to (or can derive) the secret—which would completely undermine the transient knowledge guarantee.
 
 **Implications:**
 
@@ -347,7 +349,7 @@ True zero-knowledge architecture requires that the server has **zero knowledge**
 
 **This is a feature, not a bug:**
 
-While this may seem like a limitation, it's actually proof that Encryptable provides genuine zero-knowledge security:
+While this may seem like a limitation, it's actually proof that Encryptable provides genuine request-scoped knowledge security:
 - Data breaches cannot expose user secrets (server doesn't have them)
 - Governments cannot compel secret disclosure (server doesn't have them)
 - Rogue administrators cannot access user data (secrets required)
@@ -368,15 +370,15 @@ If your application absolutely requires account recovery, you can implement:
 - **Social recovery** - Trusted contacts can help recover access (user-controlled, not server-controlled)
 - **Multi-signature schemes** - Require multiple keys for access, with backups distributed
 
-These approaches maintain zero-knowledge properties while providing recovery options, but they add complexity and must be carefully designed.
+These approaches maintain request-scoped knowledge properties while providing recovery options, but they add complexity and must be carefully designed.
 
-**Bottom line:** Secret loss = data loss is the price of true zero-knowledge security. If you need account recovery, you must implement it at the application level in a way that preserves zero-knowledge guarantees.
+**Bottom line:** Secret loss = data loss is the price of true request-scoped knowledge security. If you need account recovery, you must implement it at the application level in a way that preserves transient knowledge guarantees.
 
 ---
 
 ## 🗑️ Unsupported Standard Repository Methods
 
-> Only `deleteById` is supported for temporary or non-secret-based entities. All other standard Spring Data methods are **intentionally unsupported** as a security design decision. This enforces the zero-knowledge encryption model.
+> Only `deleteById` is supported for temporary or non-secret-based entities. All other standard Spring Data methods are **intentionally unsupported** as a security design decision. This enforces the transient knowledge encryption model.
 
 **Why ID-based methods wouldn't work:** When using `@HKDFId` CIDs are one-way derived from secrets via HKDF. Without the secret, you cannot decrypt data—even if you retrieve the encrypted blob from the database. Secret-based access is cryptographically required.
 
@@ -393,7 +395,7 @@ These approaches maintain zero-knowledge properties while providing recovery opt
 1. CIDs cannot be reversed to secrets (cryptographic one-way function)
 2. Without secrets, entities cannot be decrypted.
 3. Secrets required for cascade cleanup of `@PartOf` children
-4. Supporting `findById` would encourage insecure patterns that break zero-knowledge guarantees
+4. Supporting `findById` would encourage insecure patterns that break transient knowledge guarantees
 5. Fail-fast errors force correct usage during development.
 
 **This design will not change.** It's fundamental to the cryptographic security model.
@@ -418,7 +420,7 @@ Encryptable does not provide a soft delete feature out-of-the-box. Soft delete (
 
 While we're confident in Encryptable's long-term viability and are committed to its ongoing development and security, we believe in transparency and want you to understand all your options.
 
-If you ever need to migrate from Encryptable to another framework or solution, you cannot migrate all data at once without breaking zero-knowledge.\
+If you ever need to migrate from Encryptable to another framework or solution, you cannot migrate all data at once without breaking request-scoped knowledge.\
 However, **lazy migration IS possible** using a gradual, user-driven approach.
 
 **Migration strategy (lazy migration):**
@@ -434,12 +436,12 @@ However, **lazy migration IS possible** using a gradual, user-driven approach.
 - 🔧 **Increased complexity** - Need fallback logic to check which system has each user's data
 - 👥 **Dormant users** - Users who never log in won't migrate; may need email prompts or accept data loss after migration deadline
 
-**This preserves zero-knowledge:** You only migrate data when you legitimately have the user's secret (during authentication), never collecting all secrets at once.
+**This preserves request-scoped knowledge:** You only migrate data when you legitimately have the user's secret (during authentication), never collecting all secrets at once.
 
 **Why bulk migration is impossible:**
 - To migrate all data at once, you would need **ALL user secrets**
-- Storing or collecting all secrets completely **breaks the zero-knowledge security model**
-- This is by design - it proves the zero-knowledge guarantee is genuine
+- Storing or collecting all secrets completely **breaks the transient knowledge security model**
+- This is by design - it proves the transient knowledge guarantee is genuine
 
 **Bottom line:** While you're not permanently locked into Encryptable, migration requires careful planning and a gradual, user-driven approach. Factor this into your decision when adopting the framework.
 
@@ -509,7 +511,7 @@ However, since GridFS fields are lazy loaded, this overhead only occurs when the
 
 Encryptable does not provide fully automated secret rotation.\
 Secret rotation must be performed manually or through user-initiated processes.\
-While this may be a limitation for some organizations seeking seamless automation, it is a deliberate design choice: fully automatic rotation would require storing the initial secret within the system, which would undermine the concept of a true secret and weaken the security guarantees of zero-knowledge encryption.
+While this may be a limitation for some organizations seeking seamless automation, it is a deliberate design choice: fully automatic rotation would require storing the initial secret within the system, which would undermine the concept of a true secret and weaken the security guarantees of request-scoped knowledge encryption.
 
 **Implications:**
 - Secret rotation requires manual intervention or custom automation by the user.

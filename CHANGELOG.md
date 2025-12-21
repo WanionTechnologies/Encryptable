@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.0** (2025-12-12) - Initial release
 - **1.0.1** (2025-12-14) - Aspect Application Reliability
 - **1.0.2** (2025-12-17) - Reverted Change to Aspect Application Reliability, see details below
+- **1.0.3** (2025-12-20) - Documentation: Zero-Knowledge → Transient Knowledge terminology
 
 ---
 
@@ -25,17 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎉 Initial Release
 
-Encryptable 1.0.0 marks the first release of the framework, providing production-ready zero-knowledge encryption and ORM-like features for MongoDB.
+Encryptable 1.0.0 marks the first release of the framework, providing production-ready request-scoped (transient) knowledge encryption and ORM-like features for MongoDB.
 
 > **Why is Encryptable a framework and not just a library?** See [FAQ: Why is Encryptable called a "Framework"?](docs/FAQ.md#-why-is-encryptable-called-a-framework-instead-of-a-library)
 
 ### Core Features
 
-#### 🔐 Zero-Knowledge Cryptographic Architecture
+#### 🔐 Request-Scoped (Transient) Knowledge Cryptographic Architecture
 - **AES-256-GCM encryption** for field-level data protection
 - **HKDF-based deterministic CID generation** (RFC 5869)
 - **Per-user cryptographic isolation** - each user's data encrypted with their own derived keys
-- **Cryptographic addressing for database ORM** - stateless, zero-knowledge data access without username→ID mapping tables (novel application of content-addressable principles to relational data modeling)
+- **Cryptographic addressing for database ORM** - stateless, request-scoped (transient) knowledge data access without username→ID mapping tables (novel application of content-addressable principles to relational data modeling)
 - **No password storage** - server cannot reconstruct, reset, or access user data
 
 #### 🗄️ ORM-Like Features for MongoDB
@@ -122,7 +123,17 @@ MIT License - Free and open-source forever
 
 > **Help needed**: If you know a better way to ensure aspects are always applied correctly transparently to the user, please open a PR or issue to discuss!
 
---
+---
+
+## [1.0.3] - 2025-12-20
+
+### Documentation: Zero-Knowledge → Transient Knowledge terminology
+
+- All documentation references to "zero-knowledge" or "zero-knowledge architecture" have been removed or replaced with the correct designation: "Transient Knowledge" (request-scoped knowledge).
+- Added a new document [Not Zero-Knowledge](docs/NOT_ZERO_KNOWLEDGE.md) for full explanation and apology.
+- No code changes in this release.
+
+---
 
 ## Contributing
 
