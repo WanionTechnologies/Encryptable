@@ -113,7 +113,7 @@ MIT License - Free and open-source forever
 
 ---
 
-## [1.0.2] - 2025-12-17
+## [1.0.2] - 2025-12-17 (not published)
 
 ### Aspect Application Reliability
 
