@@ -2,11 +2,11 @@ package tech.wanion.encryptable.mongo
 
 import org.bson.types.Binary
 import tech.wanion.encryptable.util.SecurityUtils
+import tech.wanion.encryptable.util.extensions.decodeUrl64
+import tech.wanion.encryptable.util.extensions.encodeURL64
 import java.nio.ByteBuffer
 import java.security.SecureRandom
 import java.util.*
-import tech.wanion.encryptable.util.extensions.decodeUrl64
-import tech.wanion.encryptable.util.extensions.encodeURL64
 
 /**
  * CID (Compact ID) is a compact, URL-safe, cryptographically derived identifier.
@@ -44,6 +44,9 @@ class CID(bytes: ByteArray) {
     }
 
     companion object {
+        /**
+         *  Secure random generator for CID generation.
+         */
         private val random = SecureRandom()
 
         /**
@@ -110,7 +113,7 @@ class CID(bytes: ByteArray) {
             }
 
         /**
-         * Converts a UUID to an CID.
+         * Converts a UUID to a CID.
          */
         val UUID.cid: CID
             get() {
@@ -152,5 +155,4 @@ class CID(bytes: ByteArray) {
      * Hash code based on the byte array content.
      */
     override fun hashCode(): Int = bytes.contentHashCode()
-
 }

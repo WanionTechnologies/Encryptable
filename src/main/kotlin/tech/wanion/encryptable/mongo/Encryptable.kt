@@ -13,6 +13,7 @@ import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import tech.wanion.encryptable.EncryptableContext
+import tech.wanion.encryptable.MasterSecretHolder
 import tech.wanion.encryptable.config.EncryptableConfig
 import tech.wanion.encryptable.mongo.CID.Companion.cid
 import tech.wanion.encryptable.mongo.Encryptable.Companion.getSecretOf
@@ -33,7 +34,6 @@ import tech.wanion.encryptable.util.extensions.*
  * - **Automatic lifecycle:** On creation, `prepare()` encrypts fields and sets the ID. On retrieval, `restore(secret)` restores and decrypts fields.
  * - **Automagic file retrieval:** Any get request for a large file field is intercepted by `EncryptableFieldGetAspect` and the file is automagically loaded from GridFS, so you do not need to manually call a load method for these fields.
  * - **Deterministic ID:** ObjectId is generated from a secret, supporting both standard and HKDF-based strategies.
- * - **Parallel processing:** Encryption/decryption is parallelized for performance.
  * - **Change detection:** Change detection is fully automatic for all persisted fields, including child entities. However, if you use custom objects as persisted fields, those custom objects must implement proper hashCode and equals methods to ensure correct change detection.
  * - **Thread safety:** Uses thread-safe caches for reflection metadata and session-only tracking of GridFS ObjectIds.
  * - **List management:** Lists of Encryptable entities are lazy loaded when accessed. Adding an entity to such a list will automatically add it to the database, and removing an entity will also remove it from the database, ensuring consistency between memory and persistent storage.
@@ -162,12 +162,35 @@ abstract class Encryptable<T: Encryptable<T>> {
         /**
          * # getSecretOf
          *
-         * Returns the secret of an Encryptable instance.
+         * Returns the secret used for encryption operations.
          *
-         * > **Note:** Access is intentionally restricted to avoid accidental exposure; use only in trusted, specific cases.
+         * **Behavior varies by ID strategy:**
+         * - **@HKDFId entities:** Returns the entity's own secret (set via `withSecret()`)
+         * - **@Id entities:** Returns the master secret (shared across all @Id entities)
          *
-         * @param encryptable The Encryptable entity instance.
-         * @return The secret string for this entity (non-null).
+         * **Use cases:**
+         * - Internal framework operations (rotation, relationship management)
+         * - Advanced integrations requiring encryption key access
+         *
+         * **Security:**
+         * - Always call `markForWiping()` after use
+         * - Never log the actual secret value
+         * - Don't cache secrets across requests
+         *
+         * **Example:**
+         * ```kotlin
+         * // @HKDFId: returns entity's own secret
+         * val userSecret = getSecretOf(user)  // "user-secret-12345..."
+         *
+         * // @Id: returns master secret (NOT the entity's CID)
+         * val deviceSecret = getSecretOf(device)  // MasterSecretHolder.getMasterSecret()
+         * ```
+         *
+         * @param encryptable The Encryptable entity instance
+         * @return Encryption secret (@HKDFId: entity's secret, @Id: master secret)
+         * @throws IllegalStateException if secret is null or master secret not configured
+         * @see getUnsafeSecretOf For nullable secret access
+         * @see markForWiping For registering secrets for memory clearing
          */
         fun getSecretOf(encryptable: Encryptable<*>): String {
             val secret = encryptable.secret
@@ -178,12 +201,20 @@ abstract class Encryptable<T: Encryptable<T>> {
         /**
          * # getUnsafeSecretOf
          *
-         * Returns the secret of an Encryptable instance, allowing null.
+         * Returns the entity's **own secret** (set via `withSecret()`), allowing null.
          *
-         * > **Warning:** This method bypasses null checks and should be used with extreme caution.
-         * Use only in scenarios where nullability is explicitly handled and understood.
-         * @param encryptable The Encryptable entity instance.
-         * @return The secret string for this entity, or null if not set.
+         * **Important difference from `getSecretOf()`:**
+         * - This method **always** returns the entity's own secret, regardless of entity type
+         * - For **@HKDFId entities:** Returns the entity's secret (same as `getSecretOf()`)
+         * - For **@Id entities:** Returns the entity's CID/secret (NOT the master secret)
+         *
+         * Use `getSecretOf()` if you need the encryption secret (which differs for @Id entities).
+         *
+         * **Warning:** Bypasses null checks. Use only when nullability is explicitly handled.
+         *
+         * @param encryptable The Encryptable entity instance
+         * @return The entity's own secret, or null if not set
+         * @see getSecretOf For getting the encryption secret (returns master secret for @Id entities)
          */
         fun getUnsafeSecretOf(encryptable: Encryptable<*>): String? = encryptable.secret
     }
@@ -213,7 +244,7 @@ abstract class Encryptable<T: Encryptable<T>> {
     fun withSecret(secret: String): T {
         require(this.secret == null) { "The secret is already set for this entity." }
         if (this.id != null) {
-            val id = metadata.idStrategy.getIDFromSecret(secret, this)
+            val id = metadata.strategies.getIDFromSecret(secret, this)
             // Ensure the provided secret generates the same ID as the current one.
             require(this.id == id) {
                 "The provided secret generated a different ID. Existing ID: ${this.id}, ID from the provided Secret: $id."
@@ -222,6 +253,23 @@ abstract class Encryptable<T: Encryptable<T>> {
         this.secret = secret
         // Register the secret for clearing at request end to limit exposure in memory
         markForWiping(secret)
+        return this as T
+    }
+
+    /**
+     * Returns this entity instance with the provided CID set as both the ID and secret.
+     *
+     * This method can only be used with entities using the `@Id` strategy.
+     *
+     * @param cid The CID to associate with this entity instance.
+     * @return This entity instance, cast to its actual type.
+     * @throws IllegalStateException if the entity does not use the `@Id` strategy or if the secret is already set.
+     */
+    fun withSecret(cid: CID): T {
+        if (metadata.strategies != Metadata.Strategies.ID)
+            throw IllegalStateException("withSecret(CID) can only be used with entities using the @Id strategy.")
+        require(this.secret == null) { "The secret is already set for this entity." }
+        this.secret = cid.toString()
         return this as T
     }
 
@@ -325,7 +373,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      *
      * @return True if the id is null, indicating the entity has not been saved to the database.
      */
-    fun isNew(): Boolean = id == null
+    fun isNew(): Boolean = this@Encryptable.id == null
 
     /**
      * # prepare
@@ -335,7 +383,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * - Requires a non-null secret and a null id.
      * - The ID is deterministically generated from the secret using the configured strategy.
      * - For fields that are lists of entities, converts regular lists to `EncryptableList` for automatic management.
-     * - Processes all persisted fields, encrypting those marked with `@Encrypt` as needed (in parallel if possible).
+     * - Processes all persisted fields, encrypting those marked with `@Encrypt` as needed.
      *
      * @throws IllegalStateException if the secret is null or the id is not null.
      */
@@ -343,13 +391,13 @@ abstract class Encryptable<T: Encryptable<T>> {
         val secret = requireNotNull(this.secret) { "the Secret can't be Null when preparing. ensure that the secret was set eith: entity.withSecret(secret)." }
         // Register the secret for clearing at request end to limit exposure in memory
         markForWiping(secret)
-        requireNull(id) { "the ID must be Null when preparing." }
+        requireNull(this@Encryptable.id) { "the ID must be Null when preparing." }
         // Set ID first, before processing lists/nested entities that may need to reference this entity
-        this.id = metadata.idStrategy.getIDFromSecret(secret, this)
-        this.metadata.encryptableListFields.parallelForEach { (fieldName, field) ->
+        this.id = metadata.strategies.getIDFromSecret(secret, this)
+        this.metadata.encryptableListFields.forEach { (fieldName, field) ->
             val list: List<Encryptable<*>> = this.getField(fieldName)
-            if (list is EncryptableList) return@parallelForEach
-            if (encryptableListFieldMap.containsKey(fieldName)) return@parallelForEach
+            if (list is EncryptableList) return@forEach
+            if (encryptableListFieldMap.containsKey(fieldName)) return@forEach
             val encryptableList = EncryptableList(fieldName, this, list)
             field.set(this, encryptableList)
         }
@@ -375,12 +423,64 @@ abstract class Encryptable<T: Encryptable<T>> {
      * # integrityCheckAndCleanUp
      *
      * Performs an integrity check on all Encryptable references in this entity and cleans up any missing references.
-     * Combines the integrity check and cleanup into a single operation.
-     * @return Map<Class<out Encryptable<*>>, Set<String>> of removed CID strings per type.
+     *
+     * - First, migrates any legacy references to ID-only storage.
+     * - Next, performs the integrity check to identify missing references.
+     * - Finally, cleans up any missing references from the entity.
+     *
+     * @return Map<Class<out Encryptable<*>>, Set<String>> of missing secrets per type that were cleaned up.
      */
     private fun integrityCheckAndCleanUp(): Map<Class<out Encryptable<*>>, Set<String>> {
+        // First, migrate any legacy references to ID-only storage
+        migrateReferencesToIdOnly()
+        // Next, perform the integrity check
         val missingByType = integrityCheck()
+        // Finally, clean up any missing references
         return cleanUpReferences(missingByType)
+    }
+
+    /**
+     * # migrateReferencesToIdOnly
+     *
+     * Detects and fixes legacy reference storage in @Id entities that reference @HKDFId entities.
+     *
+     * **Context**: In versions prior to 1.0.4, @Id entities may have stored the full secret map
+     * when referencing @HKDFId entities. This creates a security risk: if the master secret is
+     * compromised, the secrets of @HKDFId entities could be exposed.
+     *
+     * **What it does**:
+     * - Scans encryptableFieldMap and encryptableListFieldMap for @HKDFId entity references
+     * - If a reference contains the full secret map, extracts the ID and replaces the reference with ID-only storage
+     * - Maintains cryptographic isolation by preventing @Id entities from storing @HKDFId secrets
+     *
+     * **Scope**: Only applies to @Id entities with references to @HKDFId entities.
+     * @HKDFId entities are unaffected (they don't use master secret).
+     *
+     * **Result**: Automatic migration from secret-based to ID-only reference storage on entity load.
+     */
+    private fun migrateReferencesToIdOnly() {
+        if (metadata.isolated)
+            return
+        // Check single fields
+        encryptableFieldMap.entries.forEach { (fieldName, secret) ->
+            if (secret.length == 22) return@forEach // Likely an @Id reference, skip check
+            val field = metadata.encryptableFields[fieldName] ?: return@forEach
+            val type = field.type as Class<out Encryptable<*>>
+            val repository = getMetadataFor(type).repository
+            val entity = repository.findBySecretOrNull(secret) ?: return@forEach
+            field.set(this, entity.id.toString())
+        }
+        // Check lists
+        encryptableListFieldMap.entries.forEach { (fieldName, secretList) ->
+            val field = metadata.encryptableListFields[fieldName] ?: return@forEach
+            val type = field.typeParameter() as Class<out Encryptable<*>>
+            val repository = getMetadataFor(type).repository
+            secretList.smartReplaceAll { secret ->
+                if (secret.length == 22) return@smartReplaceAll secret // Likely an @Id reference, skip check
+                val entity = repository.findBySecretOrNull(secret) ?: return@smartReplaceAll secret
+                return@smartReplaceAll entity.id.toString()
+            }
+        }
     }
 
     /**
@@ -397,19 +497,20 @@ abstract class Encryptable<T: Encryptable<T>> {
     private fun integrityCheck(): Map<Class<out Encryptable<*>>, Set<String>> {
         val secretsByType = Collections.synchronizedMap(mutableMapOf<Class<out Encryptable<*>>, MutableSet<String>>())
         // Group secrets from encryptableFieldMap
-        encryptableFieldMap.entries.parallelForEach { (fieldName, secret) ->
-            val field = metadata.encryptableFields[fieldName] ?: return@parallelForEach
+        encryptableFieldMap.entries.forEach { (fieldName, secret) ->
+            val field = metadata.encryptableFields[fieldName] ?: return@forEach
             val type = field.type as Class<out Encryptable<*>>
             secretsByType.computeIfAbsent(type) { Collections.synchronizedSet(mutableSetOf()) }.add(secret)
         }
         // Group secrets from encryptableListFieldMap
-        encryptableListFieldMap.entries.parallelForEach { (fieldName, secretList) ->
-            val field = metadata.encryptableListFields[fieldName] ?: return@parallelForEach
+        encryptableListFieldMap.entries.forEach { (fieldName, secretList) ->
+            val field = metadata.encryptableListFields[fieldName] ?: return@forEach
             val type = field.typeParameter() as Class<out Encryptable<*>>
             secretsByType.computeIfAbsent(type) { Collections.synchronizedSet(mutableSetOf()) }.addAll(secretList)
         }
         // For each type, check missing secrets
         val missingByType = mutableMapOf<Class<out Encryptable<*>>, Set<String>>()
+        // Parallelize the check across types for performance
         secretsByType.entries.parallelForEach(false) { (type, secrets) ->
             val repo = getMetadataFor(type).repository
             val missing = repo.filterNonExistingSecrets(secrets)
@@ -434,26 +535,26 @@ abstract class Encryptable<T: Encryptable<T>> {
         if (missingByType.isEmpty()) return emptyMap()
         val removedCidsByType = Collections.synchronizedMap(mutableMapOf<Class<out Encryptable<*>>, MutableSet<String>>())
         // Remove from encryptableFieldMap using type-specific sets
-        encryptableFieldMap.entries.parallelForEach { entry ->
-            val field = metadata.encryptableFields[entry.key] ?: return@parallelForEach
+        encryptableFieldMap.entries.forEach { entry ->
+            val field = metadata.encryptableFields[entry.key] ?: return@forEach
             val type = field.type as Class<out Encryptable<*>>
-            val missingSet = missingByType[type] ?: return@parallelForEach
+            val missingSet = missingByType[type] ?: return@forEach
             val typeMetadata = getMetadataFor(type)
             if (missingSet.contains(entry.value)) {
-                val cidStr = typeMetadata.idStrategy.getIDFromSecret(entry.value, type).toString()
+                val cidStr = typeMetadata.strategies.getIDFromSecret(entry.value, type).toString()
                 removedCidsByType.computeIfAbsent(type) { Collections.synchronizedSet(mutableSetOf()) }.add(cidStr)
                 encryptableFieldMap.remove(entry.key)
             }
         }
         // Remove from encryptableListFieldMap using type-specific sets
-        encryptableListFieldMap.entries.parallelForEach { (fieldName, secretList) ->
-            val field = metadata.encryptableListFields[fieldName] ?: return@parallelForEach
+        encryptableListFieldMap.entries.forEach { (fieldName, secretList) ->
+            val field = metadata.encryptableListFields[fieldName] ?: return@forEach
             val type = field.typeParameter() as Class<out Encryptable<*>>
-            val missingSet = missingByType[type] ?: return@parallelForEach
+            val missingSet = missingByType[type] ?: return@forEach
             val typeMetadata = getMetadataFor(type)
             val toRemove = secretList.filter { missingSet.contains(it) }
             toRemove.forEach { secret ->
-                val cidStr = typeMetadata.idStrategy.getIDFromSecret(secret, type).toString()
+                val cidStr = typeMetadata.strategies.getIDFromSecret(secret, type).toString()
                 removedCidsByType.computeIfAbsent(type) { Collections.synchronizedSet(mutableSetOf()) }.add(cidStr)
             }
             secretList.removeAll(missingSet)
@@ -477,7 +578,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * The `touch` method can also be extended to trigger automated security or audit actions. For instance:
      * - Sending notifications or alerts when a user logs in or accesses sensitive data.
      * - Logging access events for compliance or forensic analysis.
-     * - Initiating multi-factor authentication or other security workflows.
+     * - Initiating multifactor authentication or other security workflows.
      *
      * By customizing `touch` in your entity subclasses, you can integrate real-time monitoring, messaging, or audit logic directly into the entity lifecycle, ensuring that every access is tracked and actionable for security and compliance purposes.
      *
@@ -489,7 +590,7 @@ abstract class Encryptable<T: Encryptable<T>> {
     }
 
     /**
-     * Reads or writes fields, encrypting or decrypting those marked with `@Encrypt` in parallel.
+     * Reads or writes fields, encrypting or decrypting those marked with `@Encrypt`
      *
      * **ByteArray fields:**
      * - Large ByteArray fields (>1KB) are stored in GridFS, regardless of `@Encrypt` annotation.
@@ -514,13 +615,15 @@ abstract class Encryptable<T: Encryptable<T>> {
      * ```
      */
     private fun processFields(isWrite: Boolean = false) {
-        requireNotNull(this.secret) { "the Secret can't be Null on encryption/decryption." }
-        val secret = this.secret as String
+        // Skip processing if not encryptable
+        if (!metadata.encryptable)
+            return
+        val secret = metadata.strategies.secret(this) ?: throw IllegalStateException("the Secret can't be Null on encryption/decryption.")
 
-        metadata.byteArrayFields.entries.parallelForEach { (fieldName, field) ->
-            val bytes = field.get(this) as? ByteArray ?: return@parallelForEach
+        metadata.byteArrayFields.entries.forEach { (fieldName, field) ->
+            val bytes = field.get(this) as? ByteArray ?: return@forEach
             val bigArray = bytes.size >= EncryptableConfig.gridFsThreshold
-            val isEncrypt = metadata.encryptable && field.isAnnotationPresent(Encrypt::class.java)
+            val isEncrypt = field.isAnnotationPresent(Encrypt::class.java)
             val gridFsField = gridFsFields.contains(fieldName)
             if (!bigArray && !gridFsField) {
                 val processed = when (isWrite) {
@@ -528,7 +631,7 @@ abstract class Encryptable<T: Encryptable<T>> {
                     false -> if (isEncrypt) AES256.decrypt(secret, this, bytes) else bytes
                 }
                 field.set(this, processed)
-                return@parallelForEach
+                return@forEach
             }
             else if (gridFsField) {
                 when (isWrite) {
@@ -554,17 +657,22 @@ abstract class Encryptable<T: Encryptable<T>> {
         }
 
         // Process Encryptable fields.
-        metadata.encryptableFields.entries.parallelForEach { (fieldName, field) ->
+        metadata.encryptableFields.entries.forEach { (fieldName, field) ->
             val innerEncryptable = this.getField<Encryptable<*>?>(fieldName)
             // Ensures that inner Encryptable objects added during construction are registered in the map; without this, they would not be persisted.
-            if (innerEncryptable != null && !encryptableFieldMap.contains(fieldName))
-                encryptableFieldMap[fieldName] = innerEncryptable.secret ?: throw IllegalStateException("The secret of field '$fieldName' can't be null.")
+            if (innerEncryptable != null && !encryptableFieldMap.contains(fieldName)) {
+                encryptableFieldMap[fieldName] =
+                    if (this.metadata.isolated) innerEncryptable.secret
+                        ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its secret set.")
+                    else innerEncryptable.id?.toString()
+                        ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its id set.")
+            }
             // Clear all encryptable fields.
             // they can't be saved as they exist on their own collection.
             field.set(this, null)
         }
 
-        this.encryptableFieldMap.entries.parallelForEach { entry ->
+        this.encryptableFieldMap.entries.forEach { entry ->
             val value = entry.value
             entry.setValue(
                 if (isWrite)
@@ -573,7 +681,7 @@ abstract class Encryptable<T: Encryptable<T>> {
                     AES256.decrypt(secret, this@Encryptable, value)
             )
         }
-        this.encryptableListFieldMap.values.parallelForEach { list ->
+        this.encryptableListFieldMap.values.forEach { list ->
             list.smartReplaceAll {
                 if (isWrite)
                     AES256.encrypt(secret, this@Encryptable, it)
@@ -582,7 +690,7 @@ abstract class Encryptable<T: Encryptable<T>> {
             }
         }
 
-        metadata.encryptFields.values.parallelForEach { field ->
+        metadata.encryptFields.values.forEach { field ->
             fun processData(data: Any?): Any? {
                 return when (data) {
                     is ByteArray -> return data // ByteArray fields are handled above.
@@ -593,7 +701,7 @@ abstract class Encryptable<T: Encryptable<T>> {
                             data.isListOf(String::class.java) -> data.map { processData(it) }
                             else -> {
                                 val elemClass = data.firstOrNull()?.javaClass ?: return data
-                                if (metadata.encryptable && elemClass.isAnnotationPresent(Encrypt::class.java))
+                                if (elemClass.isAnnotationPresent(Encrypt::class.java))
                                     data.map { processData(it) }
                                 else data
                             }
@@ -601,7 +709,6 @@ abstract class Encryptable<T: Encryptable<T>> {
                     }
                     else -> {
                         data?.let {
-                            if (!metadata.encryptable) return it
                             val innerFields = getEncryptFieldsFor(it.javaClass)
                             if (innerFields.isNotEmpty()) {
                                 innerFields.forEach { f ->
@@ -638,12 +745,12 @@ abstract class Encryptable<T: Encryptable<T>> {
         requireNotNull(this.secret) { "the Secret can't be Null on before rotation." }
         requireNotNull(this.id) { "the id can't be Null on before rotation." }
         // load all the GridFS files into memory
-        gridFsFields.parallelForEach { fieldName ->
+        gridFsFields.forEach { fieldName ->
             loadGridFsField(fieldName)
         }
         // Delete all GridFS files previously associated with this entity;
         // as they will be re-encrypted with the new secret.
-        gridFsFieldIdMap.values.parallelForEach { objectId ->
+        gridFsFieldIdMap.values.forEach { objectId ->
             gridFsTemplate.delete(Query(Criteria.where("_id").`is`(objectId)))
         }
         // Clear secret and id.
@@ -680,7 +787,7 @@ abstract class Encryptable<T: Encryptable<T>> {
 
         // Create the objectId from the 12-byte array
         val objectId = ObjectId(bytes)
-        // Cache the ObjectId in the map for future reference
+        // Cache the ObjectId in the map for future referencing
         gridFsFieldIdMap[fieldName] = objectId
 
         val encryptField = metadata.encryptable && field.isAnnotationPresent(Encrypt::class.java)
@@ -689,7 +796,7 @@ abstract class Encryptable<T: Encryptable<T>> {
         // so we don't have the secret... which means we can't decrypt the field.
         // instead of throwing an exception, we just return.
         // why? at least we populated the gridFsFieldIdMap.
-        if (encryptField && secret == null)
+        if (encryptField && this@Encryptable.secret == null)
             return
         // if we got here, either the secret isn't null or the field isn't encrypted.
         // so we continue.
@@ -741,7 +848,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      *
      * - Intended for use with "part-of" relationships, ensuring child entities are deleted when the parent is deleted, but only for fields explicitly marked as such.
      * - Does not delete entities for fields not annotated with @PartOf, preserving shared references.
-     * - Uses parallel processing for efficiency.
+     * - Uses parallel processing as it is IO-bound operations (database deletions).
      */
     private fun cascadeDelete() {
         populateGridFsFieldIdMap()
@@ -753,7 +860,7 @@ abstract class Encryptable<T: Encryptable<T>> {
         // if secret is null, means that this entity was loaded without findBySecret,
         // which means all the fields are still encrypted.
         // including the fields that tracks the children entities.
-        if (secret == null)
+        if (this@Encryptable.secret == null)
             return
         // if we got here, means that the secret isn't null and all the fields are decrypted.
         // Delete all entities referenced in encryptableFieldMap, only if field is annotated with @PartOf
@@ -803,7 +910,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * @return The string representation of the entity, typically its MongoDB ObjectId.
      */
     final override fun toString(): String {
-        return id?.toString() ?: super.toString()
+        return this@Encryptable.id?.toString() ?: super.toString()
     }
 
     /**
@@ -851,7 +958,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * @return The computed hash code.
      */
     final override fun hashCode(): Int {
-        var result: Int = id.hashCode()
+        var result: Int = this@Encryptable.id.hashCode()
         metadata.persistedFields.values.forEach { field ->
             val value = field.get(this) ?: return@forEach
             val fieldResult = if (value is ByteArray) value.first4KBChecksum() else value.hashCode()
@@ -876,7 +983,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      */
     fun hashCodes(): MutableMap<String, Int> {
         val result = ConcurrentHashMap<String, Int>()
-        metadata.persistedFields.parallelForEach { (name, field) ->
+        metadata.persistedFields.forEach { (name, field) ->
             val hash = when (val value = field.get(this)) {
                 is ByteArray -> value.first4KBChecksum()
                 null -> 0
@@ -898,12 +1005,18 @@ abstract class Encryptable<T: Encryptable<T>> {
         /**
          * The strategy used for deterministic ID generation (ID or HKDFID).
          */
-        val idStrategy: IDStrategy
+        val strategies: Strategies
 
         /**
-         * Indicates whether the class has any fields annotated with @Encrypt.
+         * Indicates whether this Encryptable class actually uses encryption.
          */
         val encryptable: Boolean
+
+        /**
+         * Indicates whether this Encryptable class is cryptographically isolated (uses HKDFID strategy).
+         * When true, the entity uses its own secret for encryption instead of the shared master secret.
+         */
+        val isolated: Boolean
 
         /**
          * Repository of this Encryptable class.
@@ -958,100 +1071,104 @@ abstract class Encryptable<T: Encryptable<T>> {
         init {
             val idField = encryptableClass.getDeclaredField("id").apply { isAccessible = true }
 
-            this.idStrategy = when (idField.annotations.firstOrNull()) {
-                is Id -> IDStrategy.ID
-                is HKDFId -> IDStrategy.HKDFID
+            this.strategies = when (idField.annotations.firstOrNull()) {
+                is Id -> Strategies.ID
+                is HKDFId -> Strategies.HKDFID
                 else -> throw IllegalStateException("The 'id' field must be annotated with either @Id or @HKDFId in class ${encryptableClass.name}.")
             }
 
-            /**
-             * On IDStrategy.ID, no fields can be encrypted since the secret is the ID itself, making it a non-secret.
-             */
-            this.encryptable = idStrategy != IDStrategy.ID
+            // An Encryptable is considered cryptographically isolated if it uses the HKDFID strategy.
+            this.isolated = strategies == Strategies.HKDFID
 
-            /**
-             * Validation: If the strategy is ID, ensure no fields are annotated with @Encrypt.
-             * Fail-fast to prevent false sense of security.
-             */
-            if (!this.encryptable && encryptFields.isNotEmpty())
-                throw IllegalStateException("Encryptable class \"${encryptableClass.name}\" has fields annotated with @Encrypt, but the ID strategy is ID which does not support encryption.")
+            // An Encryptable is considered encryptable if it is a @HKDFId entity,
+            // or it is an @Id entity with:
+            // - at least one @Encrypt field,
+            // - AND the master secret is set.
+            // if master secret is not set, the method `masterSecretIsSet()` will throw IllegalStateException.
+            this.encryptable =
+                this.strategies == Strategies.HKDFID || (encryptFields.isNotEmpty() && MasterSecretHolder.masterSecretIsSet())
         }
 
         /**
-         * **Supported strategies for generating deterministic `CID` from a secret.**
+         * # Strategies Enum
          *
-         * - `ID`: Uses the secret directly as the `CID`.
-         * - `HKDFID`: Uses HKDF to derive the `CID` from the secret.
+         * Defines two strategies for generating CIDs and deriving encryption keys:
          *
-         * ```kotlin
-         * enum class IDStrategy {
-         *     ID, HKDFID
-         * }
-         * ```
+         * - **ID (@Id):** Uses secret directly as CID (22 chars). Encrypted fields use master secret (shared across all @Id entities).
+         * - **HKDFID (@HKDFId):** Derives CID via HKDF (≥32 chars). Encrypted fields use entity's own secret (per-entity isolation).
+         *
+         * | Aspect | @Id | @HKDFId |
+         * |--------|-----|---------|
+         * | **CID Generation** | Direct (secret = CID) | HKDF-derived (one-way) |
+         * | **Encryption Keys** | Master secret (shared) | Entity secret (isolated) |
+         * | **Secret Rotation** | ❌ Not supported | ✅ Supported (`rotateSecret()`) |
+         * | **Master Secret Required** | Yes (if using @Encrypt) | No (independent) |
+         * | **Use Case** | Public IDs, shared resources | User accounts, sensitive data |
          */
-        enum class IDStrategy(val strategy: (String, Class<out Encryptable<*>>) -> CID) {
+        enum class Strategies(val id: (String, Class<out Encryptable<*>>) -> CID, val secret: (Encryptable<out Encryptable<*>>) -> String?) {
             /**
-             * **Standard ID strategy**
+             * # ID Strategy (@Id)
              *
-             * Uses the secret directly, must be a 22 character base64 url-safe and no padding `String`.
-             * Essentially making the secret a non-secret.
+             * Uses the secret **directly** as the CID (22-char Base64 URL-safe).
+             * Encrypted fields use the **master secret** (shared across all @Id entities).
              *
-             * **TIP:** To generate a valid random CID for this strategy, use:
-             * ```kotlin
-             * val randomCid = CID.random.toString()
-             * ```
-             * This produces a URL-safe, 22-character Base64 string suitable for use as a direct ID.
+             * - Secret must be exactly 22 characters (use `CID.random()`)
+             * - CID is a **non-secret** (safe to share/expose)
+             * - No secret rotation supported (changing secret = changing CID)
+             * - Master secret required if using @Encrypt fields
+             *
+             * **Use for:** Public IDs, shared resources, devices
              */
-            ID({ secret, _ -> secret.cid }),
+            ID({ secret, _ -> secret.cid }, { MasterSecretHolder.getMasterSecret() }),
 
             /**
-             * **HKDF-based ID strategy**
+             * # HKDFID Strategy (@HKDFId)
              *
-             * Derives the ID from the secret using HKDF.
-             * The secret can be any string of at least 32 characters.
-             * Ideally a high entropy string.
+             * Derives the CID from the secret using **HKDF** (one-way derivation).
+             * Encrypted fields use the **entity's own secret** (which means per-entity cryptographic isolation).
              *
-             * **Limitation:**
-             * Minimum entropy guarantee cannot be strictly enforced for secrets derived from user details (e.g., username, password, 2FA secret).
-             * If the secret is deterministically derived from user input, it may have low entropy and could be rejected by entropy validation,
-             * even if it is valid for authentication. There is no way to guarantee that all user-derived secrets will always yield high-entropy results.
+             * - Secret must be ≥32 characters (high entropy recommended)
+             * - CID is derived, cannot be reversed to obtain secret
+             * - Per-entity secret rotation supported via `rotateSecret()`
+             * - Master secret is **never used** (fully independent)
+             * - Class namespacing: same secret + different class = different CID
              *
-             * **TIP:** To minimize this limitation, derive at least 64 characters from user details before using as a secret.
-             *
-             * **TIP²:** For HKDF-based IDs, generate a high-entropy secret using:
-             * ```kotlin
-             * val secret = String.randomSecret()
-             * ```
-             * This extension function creates a cryptographically secure, random string of the desired length (e.g., 43+ characters), ideal for use as a secret in HKDF-based ID derivation.
+             * **Use for:** User accounts, sensitive per-entity data requiring isolation
              */
             HKDFID({ secret, sourceClass ->
                 require(secret.length >= 32) { "For HKDFID strategy, the secret must be at least 32 characters long." }
                 HKDF.deriveFromEntropy(secret, sourceClass, context = "CID", byteLength = 16).cid
-            });
+            }, { encryptable -> encryptable.secret });
 
             /**
-             * Returns the `CID` generated from the secret and source class.
+             * Returns the CID generated from the secret and source class.
              *
-             * @param secret The secret string.
-             * @param sourceClass The `Encryptable` class.
-             * @return The generated `CID`.
+             * This method applies the strategy's ID generation logic to produce a CID.
              *
-             * ```kotlin
-             * val id = IDStrategy.ID.getIDFromSecret(secret, MyEncryptable::class.java)
-             * ```
+             * @param secret The secret string used to generate the CID
+             * @param sourceClass The Encryptable class (used for namespacing in HKDFID)
+             * @return The generated CID
+             *
+             * @throws IllegalArgumentException if secret doesn't meet strategy requirements
+             *         - ID: Must be exactly 22 characters
+             *         - HKDFID: Must be at least 32 characters
+             *
+             * @see CID For the Compact ID type
              */
-            fun getIDFromSecret(secret: String, sourceClass: Class<out Encryptable<*>>): CID = strategy(secret, sourceClass)
+            fun getIDFromSecret(secret: String, sourceClass: Class<out Encryptable<*>>): CID = id(secret, sourceClass)
 
             /**
-             * Returns the `CID` generated from the secret and source instance.
+             * Returns the CID generated from the secret and source instance.
              *
-             * @param secret The secret string.
-             * @param source The `Encryptable` instance.
-             * @return The generated `CID`.
+             * Convenience overload that extracts the class from the instance.
              *
-             * ```kotlin
-             * val id = IDStrategy.HKDFID.getIDFromSecret(secret, myEncryptable)
-             * ```
+             * @param secret The secret string used to generate the CID
+             * @param source The Encryptable instance (class extracted for namespacing)
+             * @return The generated CID
+             *
+             * @throws IllegalArgumentException if secret doesn't meet strategy requirements
+             *
+             * @see getIDFromSecret
              */
             fun getIDFromSecret(secret: String, source: Encryptable<*>): CID =
                 getIDFromSecret(secret, source::class.java)

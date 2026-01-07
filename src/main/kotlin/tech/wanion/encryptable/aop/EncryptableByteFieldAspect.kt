@@ -136,10 +136,11 @@ class EncryptableByteFieldAspect {
 
         if (isBig) {
             // Storing a large field: save to GridFS
-            val secret = Encryptable.getSecretOf(encryptable)
             val encryptField = metadata.encryptable && field.isAnnotationPresent(Encrypt::class.java)
+            // To prevent it from throwing in case it is an @Id entity and the master secret was not set.
+            val secret = if (encryptField) Encryptable.getSecretOf(encryptable) else null
             val bytesToStore =
-                if (encryptField) AES256.encrypt(secret, encryptable::class.java, newBytes) else newBytes
+                if (secret != null) AES256.encrypt(secret, encryptable::class.java, newBytes) else newBytes
             val objectId = gridFsTemplate.store(bytesToStore.inputStream(), fieldName)
             if (!gridFsFields.contains(fieldName))
                 gridFsFields.add(fieldName)

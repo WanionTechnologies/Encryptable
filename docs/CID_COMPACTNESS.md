@@ -1,4 +1,4 @@
-# CID: A More Compact Alternative to UUID
+# CID: A Compact Alternative to UUID
 
 a CID (Compact ID) is a 22-character, URL-safe Base64 encoding of 16 bytes (128 bits).\
 
@@ -27,7 +27,7 @@ It is designed as a modern, compact, and secure alternative to the traditional U
   - CID encoding/decoding is fast and natively supported in Java/Kotlin via Base64.
 
 - **Entropy Validation:**
-  - All CID generation (including HKDF-derived and random) automatically validates entropy using Shannon entropy calculation (≥3.5 bits/character) and repetition checking (≥25% unique characters).
+  - All CID's that were randomly generated using [CID.random()](../src/main/kotlin/tech/wanion/encryptable/mongo/CID.kt) will automatically validate entropy using Shannon entropy calculation (≥3.5 bits/character) and repetition checking (≥25% unique characters).
   - Prevents weak secrets like "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" while accepting high-quality Base64 URL-safe secrets.
   - Automatically regenerates if insufficient entropy is detected, ensuring all CIDs have cryptographic quality.
 

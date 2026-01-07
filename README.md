@@ -25,11 +25,25 @@ For version history and release notes, see [Changelog](CHANGELOG.md).
 
 ## 🛠️ Scope and Application-Level Features
 
-Encryptable is intentionally focused on providing secure, innovative data management and encryption for MongoDB—including cryptographic addressing, request-scoped (transient) knowledge security, field-level encryption, and ORM-like relationships.\
-Other advanced features such as multi-tenancy or external KMS integration are left for the developer to implement as needed.\
-This design keeps Encryptable simple, flexible, and easy to integrate into a wide variety of projects.
+Encryptable is intentionally focused on providing secure, innovative data management and encryption for MongoDB—including cryptographic addressing, request-scoped (transient) knowledge security, field-level encryption, and ORM-like relationships.
 
-> **See also:** [Limitations](docs/LIMITATIONS.md) for a full discussion of the security model and the distinction from strict zero-knowledge systems.
+**What's included:**
+- ✅ Cryptographic addressing and CID generation
+- ✅ Field-level AES-256-GCM encryption
+- ✅ ORM-like relationships (One-to-One, One-to-Many, Many-to-Many)
+- ✅ Request-scoped secret management
+- ✅ Master secret support (from environment variables or KMS at startup)
+
+**What's left to the developer:**
+- Multi-tenancy architecture
+- Rate limiting and brute-force protection
+- KMS integration for fetching master secret (simple pattern documented)
+- Custom authentication flows
+- Application-level access controls
+
+> **Note on KMS:** Encryptable supports loading the master secret from KMS (AWS, Azure, GCP, Vault) at application startup. Per-entity KMS calls are not supported due to performance constraints. See [Limitations](docs/LIMITATIONS.md) for details.
+
+This design keeps Encryptable simple, flexible, and easy to integrate into a wide variety of projects.
 
 ---
 
@@ -48,8 +62,10 @@ class User : Encryptable<User>() {
 class Device : Encryptable<Device>() {
     // @Id: uses the 22-character Base64 URL-Safe String directly, making it a non-secret.
     @Id override var id: CID? = null
-    // for entities with @Id, you cannot use @Encrypt.
-    var serial: String? = null
+    // for entities with @Id, now you can use @Encrypt.
+    // the master secret needs to be configured.
+    // which means, this entity will be encrypted using a shared secret.
+    @Encrypt var serial: String? = null
 }
 
 // All repositories must extend EncryptableMongoRepository<T>
@@ -65,8 +81,8 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 Add the Encryptable Starter dependency to your Gradle build:
 ```kotlin
 dependencies {
-    implementation("tech.wanion:encryptable-starter:1.0.3")
-    aspect("tech.wanion:encryptable-starter:1.0.3")
+    implementation("tech.wanion:encryptable-starter:1.0.4")
+    aspect("tech.wanion:encryptable-starter:1.0.4")
 }
 ```
 

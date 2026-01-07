@@ -15,13 +15,20 @@ Encryptable requires a modern JVM environment and specific runtime configuration
 
 ## 🧩 Dependencies
 
-- **Spring Boot 4.0.0**
-- **Kotlin 2.2.21** (recommended for full feature set)
-- **AspectJ 9.0.0** (for AOP and bytecode weaving)
-- **at.favre.lib:hkdf:2.0.0** (for key derivation)
-- **MongoDB** (for persistence)
+The following dependencies are required for Encryptable.  
+**All of these are included in the `encryptable-starter` package, so you do not need to add them manually.**
 
-_All of these dependencies are included in the Encryptable starter package. You do not need to add them manually if you use the starter._
+| Dependency | Version | Purpose |
+|------------|---------|---------|
+| org.jetbrains.kotlin:kotlin-stdlib | 2.2.21 | Kotlin standard library |
+| org.jetbrains.kotlin:kotlin-reflect | 2.2.21 | Kotlin reflection support |
+| org.springframework.boot:spring-boot-starter-webmvc | 4.0.0 | Spring Boot web framework |
+| org.springframework.boot:spring-boot-starter-data-mongodb | 4.0.0 | MongoDB persistence layer |
+| at.favre.lib:hkdf | 2.0.0 | HKDF key derivation (RFC 5869) |
+| org.aspectj:aspectjrt | 1.9.25 | AspectJ runtime |
+| org.aspectj:aspectjweaver | 1.9.25 | AspectJ weaving (AOP) |
+
+> **Note:** These versions are based on the current release and may be updated in future versions. Always check the latest starter for up-to-date versions.
 
 ---
 
@@ -47,8 +54,8 @@ To add the Encryptable Starter to your project, use:
 
 ```kotlin
 dependencies {
-    implementation("tech.wanion:encryptable-starter:1.0.3")
-    aspect("tech.wanion:encryptable-starter:1.0.3")
+    implementation("tech.wanion:encryptable-starter:1.0.4")
+    aspect("tech.wanion:encryptable-starter:1.0.4")
 }
 ```
 

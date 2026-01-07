@@ -113,49 +113,54 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
      *
      * ### Parameters
      * - `secret`: The secret string.
+     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
      *
      * ### Returns
      * - `Optional<T>` containing the entity if found.
      */
-    fun findBySecret(secret: String): Optional<T>
+    fun findBySecret(secret: String, secretAsId: Boolean = false): Optional<T>
 
     /**
      * Finds an entity by its secret string, or returns `null` if not found.
      *
      * ### Parameters
      * - `secret`: The secret string.
+     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
      *
      * ### Returns
      * - The entity if found, or `null`.
      */
-    fun findBySecretOrNull(secret: String): T? = findBySecret(secret).orElse(null)
+    fun findBySecretOrNull(secret: String, secretAsId: Boolean = false): T? = findBySecret(secret, secretAsId).orElse(null)
 
     /**
      * Finds all entities matching the given list of secret strings.
      *
      * ### Parameters
      * - `secrets`: Iterable of secret strings.
+     * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
      *
      * ### Returns
      * - List of matching entities (`List<T>`).
      */
-    fun findBySecrets(secrets: Iterable<String>): List<T>
+    fun findBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false): List<T>
 
     /**
      * Deletes an entity by its secret string.
      *
      * ### Parameters
      * - `secret`: The secret string.
+     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
      */
-    fun deleteBySecret(secret: String)
+    fun deleteBySecret(secret: String, secretAsId: Boolean = false)
 
     /**
      * Deletes all entities matching the given list of secret strings.
      *
      * ### Parameters
      * - `secrets`: Iterable of secret strings.
+     * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
      */
-    fun deleteBySecrets(secrets: Iterable<String>)
+    fun deleteBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false)
 
     /**
      * Updates the metadata for a given entity.

@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "tech.wanion"
-version = "1.0.3"
+version = "1.0.4"
 
 java {
 	toolchain {

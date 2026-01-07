@@ -83,14 +83,24 @@ class EncryptableList<T: Encryptable<T>>(
     fieldName: String,
     val encryptable: Encryptable<*>
 ) : MutableList<T> {
+    /** Lock for thread-safety. */
     private val lock = ReentrantLock()
+    /** The underlying list of secrets backing this EncryptableList. */
     private val secretList: MutableList<String>
+    /** The class type of the list elements.
+     * Used for repository lookups and type validation.
+     */
     private val typeClass: Class<T>
+    /** Repository for type T entities. */
     private val encryptableMongoRepository: EncryptableMongoRepository<T>
+    /** Indicates whether the list is part of a parent entity (annotated with @PartOf). */
     private val partOf: Boolean
+    /** Indicates whether the list is part of a cryptographically isolated Entity (id annotated with @HKDFId). */
+    private val isolated: Boolean
 
     init {
-        val field = encryptable.metadata.encryptableListFields[fieldName] ?: throw IllegalArgumentException("Field '$fieldName' not found in ${encryptable::class.java.name}")
+        val metadata = encryptable.metadata
+        val field = metadata.encryptableListFields[fieldName] ?: throw IllegalArgumentException("Field '$fieldName' not found in ${encryptable::class.java.name}")
         if (!List::class.java.isAssignableFrom(field.type)) throw IllegalArgumentException("Field '$fieldName' is not a List in ${encryptable::class.java.name}")
         // Extract generic type parameter of the Field's List<T>
         val typeParameter = field.typeParameter()
@@ -102,6 +112,7 @@ class EncryptableList<T: Encryptable<T>>(
         // Get the repository for the typeClass.
         this.encryptableMongoRepository = EncryptableContext.getRepositoryForEncryptableClass(typeClass)
         this.partOf = field.getAnnotation(PartOf::class.java) != null
+        this.isolated = metadata.isolated
     }
 
     /**
@@ -143,7 +154,7 @@ class EncryptableList<T: Encryptable<T>>(
     override fun get(index: Int): T = lock.withLock {
         require(index in 0 until size) { "Index out of bounds: $index" }
         if (backingList[index] == null)
-            backingList[index] = encryptableMongoRepository.findBySecretOrNull(secretList[index])
+            backingList[index] = encryptableMongoRepository.findBySecretOrNull(secretList[index], true)
                 ?: throw IllegalStateException("No entity found in DB for secret '${secretList[index]}' at index $index")
         return backingList[index] as T
     }
@@ -157,7 +168,7 @@ class EncryptableList<T: Encryptable<T>>(
             val missingIndices = backingList.indices.filter { backingList[it] == null }
             if (missingIndices.isNotEmpty()) {
                 val secretsToLoad = missingIndices.map { secretList[it] }
-                val loaded = encryptableMongoRepository.findBySecrets(secretsToLoad)
+                val loaded = encryptableMongoRepository.findBySecrets(secretsToLoad, true)
                 val secretToObject = loaded.associateBy { Encryptable.getSecretOf(it) }
                 for (i in missingIndices) {
                     backingList[i] = secretToObject[secretList[i]]
@@ -279,7 +290,8 @@ class EncryptableList<T: Encryptable<T>>(
             // only save if it is new
             if (isNew)
                 encryptableMongoRepository.save(element)
-            val result = backingList.add(element) && secretList.add(secret)
+            val secretToSave = if (isolated) secret else element.id?.toString() ?: throw IllegalStateException("Encryptable Element must have an ID after save.")
+            val result = backingList.add(element) && secretList.add(secretToSave)
             result
         } catch (_: Exception) {
             // DB operation failed, do not update in-memory list
@@ -299,8 +311,9 @@ class EncryptableList<T: Encryptable<T>>(
             // only save if it is new
             if (isNew)
                 encryptableMongoRepository.save(element)
+            val secretToSave = if (isolated) secret else element.id?.toString() ?: throw IllegalStateException("Encryptable Element must have an ID after save.")
             backingList.add(index, element)
-            secretList.add(index, secret)
+            secretList.add(index, secretToSave)
         } catch (_: Exception) {
             // DB operation failed, do not update in-memory list
         }
@@ -317,11 +330,17 @@ class EncryptableList<T: Encryptable<T>>(
         try {
             val newList = elements.filter { it.isNew() }
             val secrets = elements.map { Encryptable.getSecretOf(it) }
+            val secretsToSave = secrets.map { secret ->
+                if (isolated) secret else {
+                    val element = elements.first { Encryptable.getSecretOf(it) == secret }
+                    element.id?.toString() ?: throw IllegalStateException("Encryptable Element must have an ID after save.")
+                }
+            }
             newList.parallelForEach {
                 encryptableMongoRepository.save(it)
             }
             backingList.addAll(elements)
-            val result = secretList.addAll(secrets)
+            val result = secretList.addAll(secretsToSave)
             result
         } catch (e: Exception) {
             // Log the exception to help with debugging
@@ -344,8 +363,14 @@ class EncryptableList<T: Encryptable<T>>(
                 encryptableMongoRepository.save(it)
             }
             val secrets = elements.map { Encryptable.getSecretOf(it) }
+            val secretsToSave = secrets.map { secret ->
+                if (isolated) secret else {
+                    val element = elements.first { Encryptable.getSecretOf(it) == secret }
+                    element.id?.toString() ?: throw IllegalStateException("Encryptable Element must have an ID after save.")
+                }
+            }
             backingList.addAll(index, elements)
-            val result = secretList.addAll(index, secrets)
+            val result = secretList.addAll(index, secretsToSave)
             result
         } catch (_: Exception) {
             // DB operation failed, do not update in-memory list
@@ -377,7 +402,7 @@ class EncryptableList<T: Encryptable<T>>(
         val old = get(index)
         try {
             if (partOf)
-                encryptableMongoRepository.deleteBySecret(Encryptable.getSecretOf(old))
+                encryptableMongoRepository.deleteBySecret(Encryptable.getSecretOf(old), true)
             backingList.removeAt(index)
             secretList.removeAt(index)
             return old

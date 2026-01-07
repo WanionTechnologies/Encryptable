@@ -67,7 +67,6 @@ publishing {
                     addDep("at.favre.lib", "hkdf", hkdfVersion)
 
                     // AspectJ / AOP
-                    //addDep("org.springframework", "spring-aspects", springAspectsVersion)
                     addDep("org.aspectj", "aspectjrt", aspectjVersion)
                     addDep("org.aspectj", "aspectjweaver", aspectjVersion)
 

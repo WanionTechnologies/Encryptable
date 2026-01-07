@@ -284,35 +284,92 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     /**
      * # rotateSecret
      *
-     * Rotates the secret for a single entity, re-encrypting all data and associated resources (including GridFS files) with the new secret.
+     * Rotates the secret for a **single @HKDFId entity**, re-encrypting all data and associated resources (including GridFS files) with the new secret.
      *
-     * This method is designed for secure, atomic secret rotation:
-     * - Ensures the old secret exists and the new secret does not already exist (prevents accidental overwrite or data loss).
-     * - Finds the entity by the old secret, invokes any pre-rotation hooks, and updates the entity to use the new secret.
-     * - Persists the entity with all fields and resources re-encrypted under the new secret.
-     * - Audit logs the rotation event without exposing actual secrets.
+     * **Important:** This method is **only supported for @HKDFId entities**. @Id entities do not support per-entity secret rotation
+     * because they use non-secret IDs and rely on the master secret for encryption (if @Encrypt is used).
+     *
+     * ## What This Method Does
+     *
+     * This method performs secure, atomic secret rotation for a single entity:
+     * 1. **Validates** that the old secret exists and the new secret is not already in use (prevents data loss)
+     * 2. **Finds** the entity by the old secret and invokes pre-rotation hooks
+     * 3. **Removes** the old entity from the database (with its old CID derived from old secret)
+     * 4. **Re-encrypts** all encrypted fields and GridFS files with keys derived from the new secret
+     * 5. **Derives new CID** from the new secret using HKDF
+     * 6. **Saves** the entity with the new CID and re-encrypted data
+     * 7. **Audit logs** the rotation event (without exposing actual secrets)
+     * 8. **Marks secrets for memory clearing** at the end of the request (transient knowledge)
+     *
+     * ## Entity Type Restrictions
+     *
+     * - ✅ **@HKDFId entities:** Supported - Each entity has its own secret, rotation is per-entity
+     * - ❌ **@Id entities:** Not supported - Would require master secret rotation (system-wide operation)
      *
      * ## Parameters
-     * - `oldSecret`: The current secret string used to access the entity.
-     * - `newSecret`: The new secret string to rotate to. Must not already be in use.
+     * - `oldSecret`: The current secret string used to access the entity. Will be marked for memory clearing.
+     * - `newSecret`: The new secret string to rotate to. Must not already be in use. Will be marked for memory clearing.
      *
      * ## Behavior
-     * - If no entity is found with the old secret, the operation is aborted.
-     * - If an entity already exists with the new secret, the operation is aborted to prevent permanent data loss.
-     * - All encrypted fields and associated resources (such as GridFS files) are re-encrypted with the new secret.
-     * - The entity is saved with the new secret, and the old secret can no longer be used to access it.
+     * - If no entity is found with the old secret, throws `IllegalArgumentException` and aborts
+     * - If an entity already exists with the new secret, throws `IllegalArgumentException` to prevent permanent data loss
+     * - All encrypted fields and associated resources (GridFS files) are re-encrypted with the new secret
+     * - The entity's CID changes (derived from new secret via HKDF)
+     * - The old CID can no longer be used to access this entity
+     * - Both `oldSecret` and `newSecret` are automatically registered for memory clearing at request end
+     *
+     * ## Performance Considerations
+     * - This is a heavyweight operation (decrypt all fields → re-encrypt all fields → re-save)
+     * - GridFS files are re-encrypted if present (additional I/O)
+     * - For large entities or many GridFS files, this can take several seconds
+     * - Consider user feedback/progress indication for long-running rotations
+     *
+     * ## Security Notes
+     * - **Per-entity operation:** This rotates the secret for ONE entity only, not system-wide
+     * - **Not master secret rotation:** This does not affect the master secret used by @Id entities
+     * - **Transient knowledge maintained:** Secrets are cleared from memory after the request completes
+     * - **Audit trail:** All rotation attempts (success/failure) are logged without leaking secrets
+     * - **Atomic operation:** Wrapped in @Transactional - either completes fully or rolls back
      *
      * ## Best Practices
-     * - This method should be called within a transactional context to ensure atomicity and rollback on failure.
-     * - For bulk secret rotation, invoke this method for each entity individually.
-     * - All rotation events are audit logged automatically (without leaking secrets).
+     * - **Transactional context:** Already wrapped in @Transactional, but ensure your calling code doesn't break the transaction
+     * - **Bulk rotation:** Invoke this method for each entity individually (do not batch)
+     * - **User-initiated only:** This should be called when the user explicitly requests rotation (e.g., password change)
+     * - **Handle failures gracefully:** Wrap in try-catch and provide clear user feedback
      *
-     * @throws IllegalArgumentException if no entity is found with the old secret or if the new secret is already in use.
+     * ## Example Usage
+     * ```kotlin
+     * // User password change flow
+     * @PostMapping("/change-password")
+     * fun changePassword(@RequestBody request: PasswordChangeRequest) {
+     *     val oldSecret = deriveSecret(request.username, request.oldPassword, request.old2FA)
+     *     val newSecret = deriveSecret(request.username, request.newPassword, request.new2FA)
+     *
+     *     try {
+     *         userRepository.rotateSecret(oldSecret, newSecret)
+     *         return ResponseEntity.ok("Password changed successfully")
+     *     } catch (e: IllegalArgumentException) {
+     *         return ResponseEntity.badRequest().body("Rotation failed: ${e.message}")
+     *     }
+     * }
+     * ```
+     *
+     * ## Related Operations
+     * - For @Id entities with @Encrypt fields, see documentation on master secret rotation complexity
+     *
+     * @param oldSecret The current secret used to access the entity
+     * @param newSecret The new secret to rotate to (must not already exist)
+     * @throws UnsupportedOperationException if called on an @Id entity (only @HKDFId supported)
+     * @throws IllegalArgumentException if no entity found with old secret or if new secret already exists
+     * @throws Exception if rotation fails (e.g., database error, encryption failure) - transaction will roll back
      */
     @Transactional
     override fun rotateSecret(oldSecret: String, newSecret: String) {
         // oldSecret and newSecret should be cleared at the end of the request to limit exposure in memory.
         markForWiping(oldSecret, newSecret)
+
+        if (metadata.strategies == Encryptable.Metadata.Strategies.ID)
+            throw UnsupportedOperationException("Secret rotation is not supported for entities using standard ID strategy. Use HKDF strategy for secret rotation support.")
 
         val startTime = Instant.now()
         val ip = EncryptableContext.getRequestIP()
@@ -480,7 +537,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     override fun existsBySecret(secret: String): Boolean {
         // secret should be cleared at the end of the request to limit exposure in memory.
         markForWiping(secret)
-        return existsById(metadata.idStrategy.getIDFromSecret(secret, typeClass))
+        return existsById(metadata.strategies.getIDFromSecret(secret, typeClass))
     }
 
     /**
@@ -503,14 +560,19 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         if (secrets.isEmpty())
             return emptyMap<CID, String>() to emptySet()
 
-        val cidToSecretMap = secrets.associateBy { secret -> metadata.idStrategy.getIDFromSecret(secret, typeClass) }
+        val cidToSecretMap = secrets.associateBy { secret ->
+            when (secret.length) {
+                22 -> secret.cid // will throw if not valid Base64 URL Safe CID
+                else -> metadata.strategies.getIDFromSecret(secret, typeClass)
+            }
+        }
         val cidBinaries = cidToSecretMap.keys.map { it.binary }
-        val filter = Document(MONGO_ID_FIELD, Document("\$in", cidBinaries))
+        val filter = Document(MONGO_ID_FIELD, Document($$"$in", cidBinaries))
         val projection = Document(MONGO_ID_FIELD, 1)
         val cursor = collection.find(filter).projection(projection)
         val existingCids = Collections.synchronizedSet(mutableSetOf<CID>())
-        cursor.parallelForEach { doc ->
-            val binary = doc.get(MONGO_ID_FIELD) as? Binary ?: return@parallelForEach
+        cursor.forEach { doc ->
+            val binary = doc.get(MONGO_ID_FIELD) as? Binary ?: return@forEach
             existingCids.add(binary.cid)
         }
         return cidToSecretMap to existingCids
@@ -571,16 +633,19 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      *
      * ## Parameters
      * - `secret`: The secret string used to deterministically generate the entity's CID.
+     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
      *
      * ## Returns
      * - `Optional<T>` containing the entity if found, or empty if not found.
      */
-    override fun findBySecret(secret: String): Optional<T> {
+    override fun findBySecret(secret: String, secretAsId: Boolean): Optional<T> {
         // secret should be cleared at the end of the request to limit exposure in memory.
         // the restore method already does this, but we're doing it here as well just to be safe.
         markForWiping(secret)
 
-        val id = metadata.idStrategy.getIDFromSecret(secret, typeClass)
+        // Determine CID from secret
+        val id = resolveCid(secret, secretAsId)
+
         val entityInfoMap = getEntityInfoMap()
         val query = Query(Criteria.where(entityInformation.idAttribute).`is`(id))
         getReadPreference().ifPresent { readPreference: ReadPreference? ->
@@ -588,6 +653,10 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         }
         val entityOpt = Optional.ofNullable(mongoOperations.findOne(query, entityInformation.javaType))
         if (entityOpt.isPresent) {
+            // If secretAsId is true and the secret is a valid CID and the entity is NOT an @Id entity.
+            // return it without restoring as it was looked up by its ID directly.
+            if (secretAsId && secret == id.toString() && metadata.strategies != Encryptable.Metadata.Strategies.ID)
+                return entityOpt
             val entity = entityOpt.get()
             // Decrypt entity using the provided secret
             restoreMethod.invoke(entity, secret)
@@ -615,16 +684,26 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      *
      * ## Parameters
      * - `secrets`: Iterable of secret strings to search for.
+     * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
      *
      * ## Returns
      * - List of entities whose CID matches any of the provided secrets. Returns an empty list if none found.
      */
-    override fun findBySecrets(secrets: Iterable<String>): List<T> {
+    override fun findBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean): List<T> {
         // secrets should be cleared at the end of the request to limit exposure in memory.
         // the restore method already does this, but we're doing it here as well just to be safe.
         markForWiping(secrets)
 
-        val cidToSecretMap = secrets.associateBy { secret -> metadata.idStrategy.getIDFromSecret(secret, typeClass) }
+        // Cid to original secret map
+        val cidToOriginalSecret = mutableMapOf<CID, String>()
+
+        // Map secrets to CIDs
+        val cidToSecretMap = secrets.associateBy { secret ->
+            val id = resolveCid(secret, secretsAsIds)
+            cidToOriginalSecret[id] = secret
+            id
+        }
+
         if (cidToSecretMap.isEmpty())
             return emptyList()
         val query = Query(Criteria.where(entityInformation.idAttribute).`in`(cidToSecretMap.keys))
@@ -634,17 +713,48 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
 
         val entities = mongoOperations.find(query, entityInformation.javaType)
         val entityInfoMap = getEntityInfoMap()
-        entities.parallelForEach {
-            restoreMethod.invoke(it, cidToSecretMap[it.id])
-            // Track initial hashes and register entity for later change detection; touch() may update audit fields
-            entityInfoMap[it.id!!] = EntityInfo(it, it.hashCodes())
-            // Check and clean up any broken reference.
-            if (EncryptableConfig.integrityCheck)
-                integrityCheck(it)
-            it.touch()
+        entities.forEach { entity ->
+                val id = entity.id as CID
+                // If secretsAsIds is true and the original secret is a valid CID and the entity is NOT an @Id entity.
+                // do not restore it as it was looked up by its ID directly.
+                if (secretsAsIds && cidToOriginalSecret[id] == id.toString() && metadata.strategies != Encryptable.Metadata.Strategies.ID)
+                    return@forEach
+                restoreMethod.invoke(entity, cidToSecretMap[id])
+                // Track initial hashes and register entity for later change detection; touch() may update audit fields
+                entityInfoMap[id] = EntityInfo(entity, entity.hashCodes())
+                // Check and clean up any broken reference.
+                if (EncryptableConfig.integrityCheck)
+                    integrityCheck(entity)
+                entity.touch()
         }
         entities.filterNotNull()
         return entities
+    }
+
+    /**
+     * # resolveCid
+     *
+     * Resolves the CID for a given secret string, optionally interpreting the secret directly as a CID.
+     *
+     * ## Parameters
+     * - `secret`: The secret string to resolve.
+     * - `secretAsId`: If true, attempts to interpret the secret directly as a CID if it matches the expected length.
+     *
+     * ## Returns
+     * - The resolved CID.
+     */
+    private fun resolveCid(secret: String, secretAsId: Boolean): CID {
+        // If secretAsId is true, first we try to interpret the secret directly as a CID.
+        if (secretAsId && secret.length == 22) {
+            try {
+                val id = secret.cid
+                return id
+            }
+            catch (_: Exception) {
+                // not a valid CID, proceed with normal secret lookup
+            }
+        }
+        return metadata.strategies.getIDFromSecret(secret, typeClass)
     }
 
     /**
@@ -660,7 +770,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         // Check and clean up any broken references.
         val missingCidsByType = integrityCheckAndCleanUpMethod.invoke(entity) as Map<Class<out Encryptable<*>>, Set<String>>
         // Log any missing references found during integrity check
-        missingCidsByType.parallelForEach { (type, missingCids) ->
+        missingCidsByType.forEach { (type, missingCids) ->
             logger.warn(" - Missing references of type ${type.simpleName}: $missingCids")
         }
     }
@@ -712,16 +822,17 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      *
      * ## Parameters
      * - `secret`: The secret string of the entity to delete.
+     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
      *
      * ## Throws
      * - Any exception encountered during deletion, which will cause the transaction to roll back.
      * - **Only applicable if current MongoDb setup supports transactions.**
      */
     @Transactional
-    override fun deleteBySecret(secret: String) {
+    override fun deleteBySecret(secret: String, secretAsId: Boolean) {
         // secret should be cleared at the end of the request to limit exposure in memory.
         // findBySecret already marks it, so no need to do it again here.
-        val encryptable = findBySecretOrNull(secret) ?: return
+        val encryptable = findBySecretOrNull(secret, secretAsId) ?: return
         val query = Query(Criteria.where(entityInformation.idAttribute).`is`(encryptable.id))
         mongoOperations.remove(query, entityInformation.javaType)
         cascadeDeleteMethod.invoke(encryptable)
@@ -735,13 +846,14 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      *
      * ## Parameters
      * - `secrets`: Iterable of secret strings of the entities to delete.
+     * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
      *
      * ## Throws
      * - Any exception encountered during deletion, which will cause the transaction to roll back.
      * - **Only applicable if current MongoDb setup supports transactions.**
      */
     @Transactional
-    override fun deleteBySecrets(secrets: Iterable<String>) {
+    override fun deleteBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean) {
         // Process secrets in batches to avoid OOM
         val batchSize = 500
         val secretList = secrets.toList()
@@ -749,7 +861,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         secretList.chunked(batchSize).forEach { batch ->
             // secrets should be cleared at the end of the request to limit exposure in memory.
             // findBySecrets already registers them, so no need to do it again here.
-            val encryptables = findBySecrets(batch)
+            val encryptables = findBySecrets(batch, secretsAsIds)
             if (encryptables.isEmpty()) return@forEach
             val cids = encryptables.map { it.id }
             val query = Query(Criteria.where(entityInformation.idAttribute).`in`(cids))
@@ -759,68 +871,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
                 removeEntityInfo(encryptable.id!!)
             }
         }
-    }
-
-    /**
-     * # deleteById
-     *
-     * Deletes an entity by its CID. Performs cascade deletion of associated resources.
-     * Note: This method is DISCOURAGED for use with Encryptable entities, as it does not handle decryption or secret management.
-     * Prefer using `deleteBySecret(secret)` or `deleteBySecrets(secrets)` instead.
-     *
-     * ## Parameters
-     * - `id`: The CID of the entity to delete.
-     */
-    @Transactional
-    override fun deleteById(id: CID) {
-        val query = Query(Criteria.where(entityInformation.idAttribute).`is`(id))
-        getReadPreference().ifPresent { readPreference ->
-            query.withReadPreference(readPreference)
-        }
-        val entityOpt = Optional.ofNullable(mongoOperations.findOne(query, entityInformation.javaType))
-        if (entityOpt.isPresent) {
-            val entity = entityOpt.get()
-            // since the Entity was not loaded via findBySecret, all fields are still encrypted.
-            // cascadeDelete will only delete GridFS files. (as they're referenced via unencrypted ObjectId's)
-            cascadeDeleteMethod.invoke(entity)
-        }
-        mongoOperations.remove(query, entityInformation.getJavaType())
-        logger.info("deleteById($id) called on EncryptableMongoRepository for Entity: ${typeClass.simpleName}. This method is discouraged; prefer deleteBySecret(secret) or deleteBySecrets(secrets) instead.")
-    }
-
-    /**
-     * # deleteAllById
-     *
-     * Deletes all entities matching the given CIDs. Performs cascade deletion of associated resources.
-     * Note: This method is DISCOURAGED for use with Encryptable entities, as it does not handle decryption or secret management.
-     * Prefer using `deleteBySecret(secret)` or `deleteBySecrets(secrets)` instead.
-     *
-     * ## Parameters
-     * - `ids`: Iterable of CIDs of the entities to delete.
-     */
-    @Transactional
-    override fun deleteAllById(ids: Iterable<CID>) {
-        Assert.notNull(ids, "The given Iterable of ids must not be null")
-        val idList = ids.toList().toList()
-        if (idList.isEmpty()) return
-        val batchSize = 500
-        idList.chunked(batchSize).forEach { batch ->
-            val query = Query(Criteria.where(entityInformation.idAttribute).`in`(batch))
-            getReadPreference().ifPresent { readPreference ->
-                query.withReadPreference(readPreference)
-            }
-            // Cascade delete for each entity in the batch
-            val entities = mongoOperations.find(query, entityInformation.javaType)
-            // using parallelForEach (unlimited) to speed up cascade deletes
-            entities.parallelForEach(false) { entity ->
-                // since the Entity was not loaded via findBySecret, all fields are still encrypted.
-                // cascadeDelete will only delete GridFS files. (as they're referenced via unencrypted ObjectId's)
-                cascadeDeleteMethod.invoke(entity)
-            }
-            // Remove all entities in the batch with a single query
-            mongoOperations.remove(query, entityInformation.getJavaType())
-        }
-        logger.info("deleteAllById($ids) called on EncryptableMongoRepository for Entity: ${typeClass.simpleName}. This method is discouraged; prefer deleteBySecret(secret) or deleteBySecrets(secrets) instead.")
     }
 
     /**
@@ -947,7 +997,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     // The following methods are intentionally not implemented to enforce
     // the use of secret-based access patterns (findBySecret, deleteBySecret, etc.)
     // which ensure proper decryption, change tracking, and resource cleanup.
-    // Methods are organized following CRUD order: Create, Read, Delete (no Update).
+    // Methods are organized following CRUD order: Create, Read, (no Update), Delete.
 
     // ==================== CREATE ====================
 
@@ -1164,6 +1214,40 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     ): R = throw NotImplementedError("findBy is not implemented.")
 
     // ==================== DELETE ====================
+
+    /**
+     * # deleteById
+     *
+     * This method is not supported and should not be used.
+     * Use `deleteBySecret(secret)` or `deleteBySecrets(secrets)` instead, which ensures proper decryption and resource cleanup for Encryptable entities.
+     *
+     * IDs are derived from secrets and cannot be reversed. You must use the original secret to delete entities.
+     *
+     * ## Parameters
+     * - `id`: The CID of the entity (not supported).
+     *
+     * ## Throws
+     * - `NotImplementedError` - This method is intentionally not implemented. Use `deleteBySecret(secret)` instead.
+     */
+    override fun deleteById(id: CID) =
+        throw NotImplementedError("deleteById is intentionally not implemented. Use deleteBySecret(secret) instead.")
+
+    /**
+     * # deleteAllById
+     *
+     * This method is not supported and should not be used.
+     * Use `deleteBySecret(secret)` or `deleteBySecrets(secrets)` instead, which ensures proper decryption and resource cleanup for Encryptable entities.
+     *
+     * IDs are derived from secrets and cannot be reversed. You must use the original secret to delete entities.
+     *
+     * ## Parameters
+     * - `ids`: Iterable of CIDs of the entities (not supported).
+     *
+     * ## Throws
+     * - `NotImplementedError` - This method is intentionally not implemented. Use `deleteBySecrets(secrets)` instead.
+     */
+    override fun deleteAllById(ids: Iterable<CID>) =
+        throw NotImplementedError("deleteAllById is intentionally not implemented. Use deleteBySecrets(secrets) instead.")
 
     /**
      * # delete

@@ -39,8 +39,10 @@ Now, with that context in mind, let's examine the specific technical and platfor
 ## Summary
 
 - **Professional security audit:** Not yet completed due to cost ($4k-6k initial + ongoing); seeking $3,000/month in sponsorships for full-time development and security validation - [sponsor the project](https://github.com/sponsors/WanionCane)
+- **Developer responsibility:** Framework cannot prevent developers from logging secrets (universal limitation of all security frameworks); organizational controls (code reviews, training, audits) required
 - **Recommended usage:** Best suited for new systems/applications; legacy migrations are technically supported but are dangerous and time-consuming, so they are not recommended
-- **Open source & sustainability:** MIT License, forkable, community-driven; only main repository will be professionally audited; ⚠️ audit expiration risk if maintainer unavailable
+- **KMS per-entity integration:** Not supported due to performance constraints (10-50ms per entity); use master secret from KMS at startup instead
+ **Open source & sustainability:** MIT License, forkable, community-driven; only main repository will be professionally audited; ⚠️ audit expiration risk if maintainer unavailable
 - **Minimum Java version:** 21 (virtual threads required)
 - **Kotlin-first design:** Best used with Kotlin; Java users can use the framework, but will not benefit from the full set of extension functions and idiomatic features available in Kotlin
 - **Kotlin coroutines:** Not compatible (ThreadLocal usage)
@@ -89,6 +91,60 @@ Professional audits and ongoing development require funding. We're seeking spons
 
 ---
 
+## 👨‍💻 Developer Responsibility: Secret Handling
+
+**Concern:** "A malicious or careless developer could log or save secrets, bypassing all security."
+
+**Reality:** ✅ **This is a universal limitation of ALL security frameworks in ALL programming languages, not specific to Encryptable.**
+
+Encryptable **cannot prevent** a developer from intentionally or accidentally logging secrets before passing them to the framework. This is **not a weakness of Encryptable**—it's a fundamental reality of software development that applies equally to:
+
+- **Signal Protocol** - Developers can log encryption keys
+- **TLS/OpenSSL** - Developers can log private keys and session keys
+- **Spring Security** - Developers can log passwords and tokens
+- **AWS KMS SDK** - Developers can log decrypted keys
+- **Any cryptographic library** - Developers have access to keys/secrets in their application code
+
+**Why this cannot be solved by the framework:**
+
+1. **Code execution context:** Framework code runs within the developer's application, with the developer's permissions
+2. **Trust boundary:** The framework must trust the developer to pass secrets correctly
+3. **Technical impossibility:** No framework can control what developers do with data before/after framework method calls
+4. **Philosophical issue:** Preventing developers from accessing their own application's data is both impossible and wrong
+
+**What Encryptable DOES provide:**
+
+✅ **Minimizes exposure:**
+- Secrets only in memory during request scope (transient knowledge)
+- Automatic memory wiping at request end
+- No secrets stored in database
+- Fail-fast on memory clearing failures
+
+✅ **Best practices documentation:**
+- Clear guidance on secret handling ([MEMORY_HIGIENE_IN_ENCRYPTABLE.md](MEMORY_HIGIENE_IN_ENCRYPTABLE.md))
+- Security audit document ([AI_SECURITY_AUDIT.md](AI_SECURITY_AUDIT.md))
+- Example code showing proper usage
+
+✅ **Secure by default:**
+- Framework never logs secrets
+- No debug output of sensitive data
+- Secure error handling (no plaintext in exceptions)
+
+**Mitigation (Organizational Level):**
+
+Developer behavior is an **organizational security responsibility**, not a framework responsibility:
+
+- **Code reviews** - Catch accidental logging
+- **Security training** - Educate on secret handling
+- **Static analysis** - Detect patterns like `logger.info(secret)`
+- **Access controls** - Limit who can deploy code
+- **Audit logs** - Monitor for suspicious behavior
+- **Separation of duties** - Multiple approvals for production
+
+**Bottom line:** Every security framework assumes developers follow secure coding practices. Malicious insiders are an organizational problem, not a framework problem. This is industry-standard across all security frameworks.
+
+---
+
 ## 🆕 Recommended for New Systems and Applications
 
 Encryptable introduces a new paradigm for data security and management, fundamentally different from traditional MongoDB usage.\
@@ -104,7 +160,143 @@ The author strongly recommends implementing Encryptable in new systems or applic
 - For existing MongoDB deployments, carefully evaluate the migration risks and consider whether a hybrid or phased approach is feasible. While legacy migrations are technically supported, they are dangerous and time-consuming, so they are not recommended and may not deliver the intended security benefits.
 
 > **Note:** Migrating a legacy system to Encryptable is technically possible, but would take too much work and is not recommended.\
-> **Encryptable is not responsible for any data loss that may have occurred during the process.**
+> **Encryptable is not responsible for any data loss that may occur during the process.**
+
+---
+
+## 🔑 No Per-Entity KMS Integration
+
+Encryptable does **not** support per-entity secret retrieval from external Key Management Services (KMS) such as AWS KMS, Azure Key Vault, Google Cloud KMS, or HashiCorp Vault.
+
+**Why this limitation exists:**
+
+Encryptable is designed to be **stateless** and **request-scoped** with minimal latency. Per-entity KMS integration is fundamentally incompatible with these design goals:
+
+| Requirement | KMS Per-Entity Behavior | Result |
+|------------|------------------------|--------|
+| **Low latency** | KMS network call: 10-50ms per entity | ❌ Unacceptable performance penalty |
+| **Stateless** | Cannot cache secrets without breaking security model | ❌ Must fetch every request |
+| **Request-scoped** | Secrets cleared after each request | ❌ KMS call required every time |
+| **Multiple entities** | 10 entities = 10 KMS calls (100-500ms) | ❌ Request timeout risk |
+
+**Example performance impact:**
+```
+Without KMS: 10 entities × 5ms = 50ms request time
+With KMS:    10 entities × (5ms + 30ms KMS) = 350ms request time
+
+7x slower with unacceptable latency for web applications
+```
+
+### ✅ Recommended Approach: Master Secret from KMS
+
+Instead of fetching secrets per-entity, **fetch the master secret once** at application startup from your KMS:
+
+```kotlin
+@Configuration
+class KmsConfiguration {
+    
+    @PostConstruct
+    fun loadMasterSecretFromKms() {
+        // Fetch master secret from KMS once at startup
+        val kmsClient = createKmsClient()
+        val masterSecret = kmsClient.getSecret("encryptable-master-secret")
+        
+        // Provide to Encryptable
+        MasterSecretHolder.setMasterSecret(masterSecret)
+        
+        // Secret is now cached in memory for the application lifetime
+        // @Id entities with @Encrypt will use this for field encryption
+    }
+    
+    private fun createKmsClient(): KmsClient {
+        // AWS KMS, Azure Key Vault, HashiCorp Vault, etc.
+        return AwsKmsClient.builder().build()
+    }
+}
+```
+
+**This approach:**
+- ✅ **One KMS call** at startup (acceptable latency)
+- ✅ **Fast request processing** (no per-request KMS calls)
+- ✅ **Works with any KMS provider** (AWS, Azure, GCP, Vault)
+- ✅ **Maintains stateless architecture** (master secret in memory only)
+- ✅ **Compatible with @Id entities** (uses master secret for encryption)
+
+### 🔐 For Maximum Security: Use @HKDFId Instead
+
+If you need **per-entity cryptographic isolation** (each entity with its own secret), use **@HKDFId entities** instead:
+
+```kotlin
+// ✅ Recommended for sensitive data with cryptographic isolation
+class User : Encryptable<User>() {
+    @HKDFId override var id: CID? = null
+    @Encrypt var email: String? = null
+    
+    // Each user has their own derived secret
+    // Compromise of one user doesn't affect others
+    // No shared master secret involved
+}
+
+// ⚠️ Use for non-sensitive data or shared resources
+class Device : Encryptable<Device>() {
+    @Id override var id: CID? = null
+    @Encrypt var metadata: String? = null
+    
+    // All devices share the master secret for encryption
+    // Simpler but less isolation
+}
+```
+
+**@HKDFId advantages:**
+- Each entity derives its own encryption keys from its own secret
+- No shared master secret required
+- Perfect cryptographic isolation between entities
+- If master secret leaks, @HKDFId entities remain secure
+
+### 🏢 Enterprise KMS Integration Pattern
+
+For enterprises that must use KMS for compliance, the recommended pattern is:
+
+1. **Startup:** Fetch master secret from KMS → `MasterSecretHolder.setMasterSecret(secret)`
+2. **@HKDFId entities:** User secrets derived at authentication (no KMS per-request)
+3. **@Id entities:** Use master secret for encryption (already loaded)
+
+**This keeps KMS integration simple, performant, and compliant while maintaining Encryptable's security model.**
+
+### ⚠️ Master Secret Rotation Is Complex
+
+**Important:** Rotating the master secret is **not** as simple as just fetching a new secret and restarting the application.
+
+**Why rotation is complex:**
+
+All @Id entities with @Encrypt fields are encrypted using the master secret. If you change the master secret, the old encrypted data becomes **permanently inaccessible** because the new secret cannot decrypt data encrypted with the old secret.
+
+**Required rotation process:**
+
+1. **Fetch new master secret** from KMS
+2. **Keep old master secret** available temporarily
+3. **Re-encrypt ALL @Id entity data:**
+   - Load each entity with old master secret
+   - Decrypt fields using old secret
+   - Encrypt fields using new secret
+   - Save back to database
+4. **Verify all data migrated** successfully
+5. **Retire old master secret**
+6. **Restart application** with new secret only
+
+**Performance impact:**
+- Must touch **every @Id entity** in the database
+- For large datasets (millions of records), this could take hours or days
+- Requires dual-secret support during transition
+- Risk of data loss if migration fails midway
+
+**Recommended approach for @Id entities:**
+
+If you anticipate needing master secret rotation:
+1. **Use @HKDFId instead** - Each entity has its own secret, rotation is per-user
+2. **Minimize @Id with @Encrypt usage** - Use @Id only for truly non-sensitive data
+3. **Plan for downtime** - Master secret rotation requires maintenance window
+4. **Implement gradual migration** - Rotate data lazily on access rather than all at once
 
 ---
 
@@ -505,7 +697,6 @@ Encryptable's cryptographic operations benefit significantly from modern CPU ins
 However, since GridFS fields are lazy loaded, this overhead only occurs when the data is actually accessed, not on every entity operation.
 
 ---
-
 
 ## 🔄 Secret Rotation Automation
 

@@ -53,6 +53,8 @@ object Limited {
     /**
      * Creates a fixed thread pool with a limited number of threads based on the configured thread limit.
      *
+     * If the effective thread limit is 1, consider executing tasks sequentially for optimal performance.
+     *
      * @param size The desired number of threads (typically the number of tasks to run in parallel).
      * @return An ExecutorService with a fixed thread pool limited to the configured maximum.
      */
@@ -60,6 +62,8 @@ object Limited {
 
     /**
      * Extension function to process elements of an Array in parallel, using a thread pool.
+     *
+     * If the effective thread limit is 1, executes sequentially for optimal performance.
      *
      * **Usage:**
      *
@@ -76,6 +80,11 @@ object Limited {
      */
     fun <T> Array<T>.parallelForEach(limited: Boolean = true, action: (T) -> Unit) {
         if (this.isEmpty()) return
+        val limit = if (limited) getLimit(this.size) else this.size
+        if (limit == 1) {
+            this.forEach(action)
+            return
+        }
         val pool = if (limited) threadPool(this.size) else Executors.newVirtualThreadPerTaskExecutor()
         try {
             val futures = this.map { item ->
@@ -89,6 +98,8 @@ object Limited {
 
     /**
      * Extension function to process elements of an Iterable in parallel, using a thread pool.
+     *
+     * If the effective thread limit is 1, executes sequentially for optimal performance.
      *
      * **Usage:**
      *
@@ -104,8 +115,14 @@ object Limited {
      * - `action`: The action to perform on each element.
      */
     fun <T> Iterable<T>.parallelForEach(limited: Boolean = true, action: (T) -> Unit) {
-        if (this.count() == 0) return
-        val pool = if (limited) threadPool(this.count()) else Executors.newVirtualThreadPerTaskExecutor()
+        val count = this.count()
+        if (count == 0) return
+        val limit = if (limited) getLimit(count) else count
+        if (limit == 1) {
+            this.forEach(action)
+            return
+        }
+        val pool = if (limited) threadPool(count) else Executors.newVirtualThreadPerTaskExecutor()
         try {
             val futures = this.map { item ->
                 pool.submit { action(item) }
@@ -118,6 +135,8 @@ object Limited {
 
     /**
      * Extension function to process entries of a Map in parallel, using a thread pool.
+     *
+     * If the effective thread limit is 1, executes sequentially for optimal performance.
      *
      * Usage:
      * - If `limited` is `true`, uses Limited.threadPool to restrict the number of concurrent threads.
@@ -134,6 +153,11 @@ object Limited {
      */
     fun <K, V> Map<out K, V>.parallelForEach(limited: Boolean = true, action: (Map.Entry<K, V>) -> Unit) {
         if (this.isEmpty()) return
+        val limit = if (limited) getLimit(this.size) else this.size
+        if (limit == 1) {
+            this.entries.forEach(action)
+            return
+        }
         val pool = if (limited) threadPool(this.size) else Executors.newVirtualThreadPerTaskExecutor()
         try {
             val futures = this.entries.map { entry ->
@@ -147,6 +171,8 @@ object Limited {
 
     /**
      * Extension function to map elements of a List in parallel, using a thread pool.
+     *
+     * If the effective thread limit is 1, executes sequentially for optimal performance.
      *
      * **Usage:**
      *
@@ -165,6 +191,10 @@ object Limited {
      */
     fun <T, R> List<T>.parallelMap(limited: Boolean = true, transform: (T) -> R): List<R> {
         if (this.isEmpty()) return emptyList()
+        val limit = if (limited) getLimit(this.size) else this.size
+        if (limit == 1) {
+            return this.map(transform)
+        }
         val pool = if (limited) threadPool(this.size) else Executors.newVirtualThreadPerTaskExecutor()
         try {
             val futures = this.mapIndexed { index, item ->
@@ -180,6 +210,8 @@ object Limited {
 
     /**
      * Extension function to replace all elements of a MutableList in parallel, using a thread pool.
+     *
+     * If the effective thread limit is 1, executes sequentially for optimal performance.
      *
      * This is a parallel version of `MutableList.replaceAll()` that processes transformations concurrently.
      *
@@ -198,6 +230,11 @@ object Limited {
      */
     fun <T> MutableList<T>.parallelReplaceAll(limited: Boolean = true, transform: (T) -> T) {
         if (this.isEmpty()) return
+        val limit = if (limited) getLimit(this.size) else this.size
+        if (limit == 1) {
+            this.replaceAll(transform)
+            return
+        }
         val pool = if (limited) threadPool(this.size) else Executors.newVirtualThreadPerTaskExecutor()
         try {
             val futures = this.mapIndexed { index, item ->
@@ -216,6 +253,8 @@ object Limited {
      * Extension function to replace all elements of a MutableList, automatically choosing between
      * sequential and parallel processing based on list size to avoid overhead for small lists.
      *
+     * If the effective thread limit is 1, executes sequentially for optimal performance.
+     *
      * For small lists (< threshold), uses sequential `replaceAll()`. For larger lists, uses
      * parallel processing to improve performance with CPU-bound operations like encryption.
      *
@@ -223,16 +262,17 @@ object Limited {
      *
      * - If `limited` is `true`, uses `Limited.threadPool` to restrict the number of concurrent threads.
      * - If `limited` is `false`, uses a virtual thread pool with parallelism equal to the number of items.
-     * - `threshold`: The minimum list size for parallel processing (default: 150). Lists smaller than this
+     * - `threshold`: The minimum list size for parallel processing (default: 1000). Lists smaller than this
      *   will use sequential processing to avoid parallelization overhead.
      *
      * **Parameters:**
      * - `limited`: Whether to limit the number of threads when using parallel processing (default: `true`).
-     * - `threshold`: Minimum size for parallel processing (default: `150`). Adjust based on operation cost.
+     * - `threshold`: Minimum size for parallel processing (default: `1000`). Adjust based on operation cost.
      * - `transform`: The transformation function to apply to each element.
      */
-    fun <T> MutableList<T>.smartReplaceAll(limited: Boolean = true, threshold: Int = 150, transform: (T) -> T) {
-        if (this.size < threshold) {
+    fun <T> MutableList<T>.smartReplaceAll(limited: Boolean = true, threshold: Int = 1000, transform: (T) -> T) {
+        val limit = if (limited) getLimit(this.size) else this.size
+        if (this.size < threshold || limit == 1) {
             this.replaceAll(transform)
         } else {
             this.parallelReplaceAll(limited, transform)
@@ -334,6 +374,11 @@ object Limited {
         override fun forEach(action: Consumer<in T>) {
             val result = executePipeline().collect(Collectors.toList())
             if (result.isEmpty()) return
+            val limit = if (limited) getLimit(result.size) else result.size
+            if (limit == 1) {
+                result.forEach { action.accept(it) }
+                return
+            }
             val pool = if (limited) threadPool(result.size) else Executors.newVirtualThreadPerTaskExecutor()
             try {
                 val futures = result.map { item -> pool.submit { action.accept(item) } }

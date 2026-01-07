@@ -9,6 +9,7 @@ Encryptable introduces several innovations in the MongoDB persistence and encryp
 This document highlights the novel technical contributions that distinguish Encryptable from all existing solutions in the market.
 
 **Key Innovation Areas:**
+
 0. **CID, a Compact, URL-Safe Identifier** (22-character Base64 alternative to UUID)
 1. **Cryptographic Addressing with HKDF-Based Deterministic CID** (Novel Architecture for MongoDB)
 2. **Deterministic Cryptography for Stateless, Transient-Knowledge Security** (New!)

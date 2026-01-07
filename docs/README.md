@@ -23,6 +23,7 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 | [DESIGN_ANALYSIS_SECRETS_VS_IDS.md](DESIGN_ANALYSIS_SECRETS_VS_IDS.md) | Architectural deep dive: Why secrets instead of IDs                   |
 | [ENCRYPTED_MEMORY_ENCLAVES.md](ENCRYPTED_MEMORY_ENCLAVES.md)         | Encrypted memory enclaves for enhanced runtime security               |
 | [FAQ.md](FAQ.md)                                                     | Frequently Asked Questions about Encryptable                          |
+| [HKDFID_VS_ID.md](HKDFID_VS_ID.md)                                   | Differences between @HKDFId and @Id entities, master secret requirement |
 | [INNOVATIONS.md](INNOVATIONS.md)                                     | Technical innovations and novel contributions of Encryptable          |
 | [LIMITATIONS.md](LIMITATIONS.md)                                     | Known limitations and trade-offs of the framework                     |
 | [MEMORY_HIGIENE_IN_ENCRYPTABLE.md](MEMORY_HIGIENE_IN_ENCRYPTABLE.md) | Advanced memory hygiene strategies and automated buffer wiping        |

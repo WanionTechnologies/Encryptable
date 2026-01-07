@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.1** (2025-12-14) - Aspect Application Reliability
 - **1.0.2** (2025-12-17) - Reverted Change to Aspect Application Reliability, see details below
 - **1.0.3** (2025-12-20) - Documentation: Zero-Knowledge → Transient Knowledge terminology
+- **1.0.4** (2026-01-07) - Master Secret Support for @Id Entities
 
 ---
 
@@ -132,6 +133,53 @@ MIT License - Free and open-source forever
 - All documentation references to "zero-knowledge" or "zero-knowledge architecture" have been removed or replaced with the correct designation: "Transient Knowledge" (request-scoped knowledge).
 - Added a new document [Not Zero-Knowledge](docs/NOT_ZERO_KNOWLEDGE.md) for full explanation and apology.
 - No code changes in this release.
+
+---
+
+## [1.0.4] - 2026-01-07
+
+### 🔑 Master Secret Support for @Id Entities
+
+This release introduces **master secret support**, enabling encryption for entities with standard `@Id` annotations. Previously, only `@HKDFId` entities could use `@Encrypt` fields.
+
+#### Added
+
+- **Master Secret Configuration**: New `MasterSecretHolder` class for managing the master secret
+  - Support for environment variables (`ENCRYPTABLE_MASTER_SECRET`)
+  - Support for application properties (`encryptable.master.secret`)
+  - Programmatic configuration via `MasterSecretHolder.setMasterSecret()`
+- **@Id Entity Encryption**: Entities with `@Id` can now use `@Encrypt` fields (requires master secret configuration)
+- **Cryptographic Isolation Protection**: @Id entities now store only IDs (not secrets) when referencing @HKDFId entities
+  - Prevents secret leakage if master secret is compromised
+  - Maintains cryptographic isolation between entity types
+- **Automatic Migration**: Legacy data with secret-based references is automatically converted to ID-only references during entity loading
+  - Transparent migration - no manual intervention required
+  - Gradual rollout as entities are loaded and saved
+- **New Documentation**: Added [HKDFID_VS_ID.md](docs/HKDFID_VS_ID.md) explaining the differences between @HKDFId and @Id entities
+
+#### Changed
+
+- **Enhanced Security Model**: @HKDFId entities remain completely independent of the master secret, maintaining per-entity cryptographic isolation
+- **Improved Documentation**: Updated multiple documents to clarify the two-tier encryption model (@HKDFId vs @Id)
+- **Configuration Flexibility**: Master secret is optional if you only use @HKDFId entities
+
+#### Security Notes
+
+- **@HKDFId entities** (user accounts, sensitive data): Still use per-entity secrets with complete cryptographic isolation - **recommended for maximum security**
+- **@Id entities** (system config, shared data): Can now use master secret for encryption - **convenient but with shared security boundary**
+- **Best Practice**: Use @HKDFId for user data requiring isolation, @Id with master secret for system-level configuration
+
+#### Breaking Changes
+
+None - this release is fully backward compatible. Existing @HKDFId entities continue to work exactly as before.
+
+#### Migration Guide
+
+If upgrading from < v1.0.4 with existing @Id entities that reference @HKDFId entities:
+- ✅ **Automatic**: The framework handles migration transparently during entity loading
+- ✅ **No action required**: Simply upgrade and the framework will convert old references to the new secure format
+
+See [HKDFID_VS_ID.md](docs/HKDFID_VS_ID.md) for complete details on choosing between @HKDFId and @Id entities.
 
 ---
 

@@ -23,7 +23,7 @@ import javax.crypto.spec.SecretKeySpec
  */
 @Suppress("UNCHECKED_CAST")
 @Component
-class EncryptableContext : ApplicationContextAware {
+final class EncryptableContext : ApplicationContextAware {
     /**
      * Sets the application context and initializes the repositories map.
      * @param applicationContext The Spring application context.

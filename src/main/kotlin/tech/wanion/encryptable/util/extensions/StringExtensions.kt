@@ -143,6 +143,25 @@ fun String.withExtension(newExtension: String): String {
 }
 
 /**
+ * Returns a new String instance with the same content as the original.
+ * This ensures a new object is created, even if the content is identical.
+ *
+ * **SECURITY WARNING:** Copying strings containing secrets increases memory exposure risk.
+ *
+ * - Use this method sparingly and only when necessary
+ * - Ensure copied strings are properly cleared with [zerify] after use
+ * - Minimize the number of copies to reduce attack surface
+ * - Each copy creates an additional location in memory that could be compromised
+ *
+ * **Current Use Case:** MasterSecretHolder uses this to create an isolated copy that won't be
+ * unintentionally zerified when derived secrets are cleared.
+ *
+ * @receiver The original string.
+ * @return A new String object with the same content.
+ */
+fun String.copy(): String = String(this.toCharArray())
+
+/**
  * Cached reference to the internal String value field for performance.
  */
 private val cachedStringValueField: Field by lazy {

@@ -21,7 +21,7 @@
    - Mandates repository structure (`EncryptableMongoRepository<T>`)
 
 3. **Manages Entire Request Lifecycle**
-   - Intercepts method calls via AspectJ weaving (AOP)
+   - Intercepts field access via AspectJ weaving (AOP)
    - Automatically encrypts/decrypts data transparently
    - Manages memory hygiene per-request (ThreadLocal cleanup)
    - Controls when and how data is persisted

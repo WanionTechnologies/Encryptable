@@ -2,8 +2,8 @@
 
 ## Document Information
 
-**Audit Date:** 2025-11-07  
-**Framework Version:** 1.0.0  
+**Audit Date:** 2026-01-07  
+**Framework Version:** 1.0.4  
 **Audit Type:** AI Security Analysis  
 
 **🚨 DISCLAIMER:** This is an automated security analysis, not a substitute for professional audit by qualified cryptographers. Professional third-party audit strongly recommended before production deployment with sensitive data.
@@ -15,7 +15,7 @@
 ## 🎯 TL;DR (30 seconds)
 
 - ✅ **Production-grade cryptography** - AES-256-GCM, HKDF (same as Signal, TLS 1.3, WireGuard)
-- ✅ **Anonymous request-scoped knowledge** - NO user data stored (not username, not password, NOTHING)
+- ✅ **Transient knowledge (request-scoped)** - NO user data stored (not username, not password, NOTHING)
 - ✅ **Only attack vector: brute force** - 2^256 search space = computationally impossible
 - ✅ **Quantum-resistant** - 128-bit effective security post-quantum (still infeasible)
 - ✅ **Memory hygiene** - Proactive wiping of secrets, fail-fast if clearing fails
@@ -34,14 +34,14 @@
 
 ### Key Strengths
 1. ✅ Industry-standard cryptography (AES-256-GCM, HKDF, SecureRandom)
-2. ✅ **Anonymous request-scoped knowledge** architecture (INNOVATION: no user data stored - not username, not password, not 2FA secrets, NOTHING)
+2. ✅ **Transient knowledge (request-scoped)** architecture (INNOVATION: no user data stored - not username, not password, not 2FA secrets, NOTHING)
 3. ✅ Authenticated encryption (confidentiality + integrity)
 4. ✅ Secure failure handling (prevents plaintext exposure)
 5. ✅ Minimum 32-character secret enforcement
 6. ✅ Minimum entropy enforcement for all secrets and CIDs (Shannon entropy ≥3.5 bits/char, ≥25% unique chars)
 7. ✅ Timing attack resistant (2^256 search space)
 8. ✅ Clear scope definition (framework vs app responsibilities)
-9. ✅ **Quantum-safe:** Enforced secret/key sizes (AES-256, @HKDFId with 256 bits) remain secure even against quantum computers; brute-force attacks would require timeframes vastly exceeding the age of the universe. The architecture avoids asymmetric cryptography (the main target of quantum attacks) and disables encryption for @Id, which is not a secret.
+9. ✅ **Quantum-safe:** Enforced secret/key sizes (AES-256, @HKDFId with 256 bits) remain secure even against quantum computers; brute-force attacks would require timeframes vastly exceeding the age of the universe. The architecture avoids asymmetric cryptography (the main target of quantum attacks). @Id entities can now use @Encrypt with the master secret (previously unsupported), providing encryption for public identifiers with encrypted metadata.
 10. ✅ **Memory exposure mitigation:** The framework proactively wipes secrets and sensitive data from JVM memory at the end of each request, drastically reducing the risk of accidental secret exposure in memory dumps or forensic analysis. Failures in wiping trigger a fail-fast exception, ensuring privacy issues never go unnoticed.
 
 ### Important Context
@@ -81,7 +81,6 @@ The following dependencies are required for Encryptable.\
 | org.springframework.boot:spring-boot-starter-webmvc | 4.0.0 |
 | org.springframework.boot:spring-boot-starter-data-mongodb | 4.0.0 |
 | at.favre.lib:hkdf | 2.0.0 |
-| org.springframework:spring-aspects | 7.0.1 |
 | org.aspectj:aspectjrt | 1.9.25 |
 | org.aspectj:aspectjweaver | 1.9.25 |
 
@@ -276,28 +275,40 @@ With rate limiting (10 attempts/second):
 Result: Mathematically impossible for both
 ```
 
-**Conclusion: Encryptable is Unbreakable**
+**Conclusion: Encryptable Provides Maximum Cryptographic Security**
 
-With proper implementation (high-entropy secrets + rate limiting), Encryptable is **cryptographically unbreakable**:
+With proper implementation (high-entropy secrets + rate limiting), Encryptable is **cryptographically secure to the maximum extent feasible**:
 - ✅ **No cryptographic vulnerabilities** (industry-standard algorithms)
 - ✅ **No implementation flaws** (secure failure handling, context separation)
 - ✅ **Attack surface minimized** (no credentials, no identity storage)
-- ✅ **Only attack is brute force** (2^256 search space = impossible)
-- ✅ **With mitigations:** Practically and mathematically impossible
+- ✅ **Only attack is brute force** (2^256 search space = computationally infeasible)
+- ✅ **With mitigations:** Practically and mathematically impossible to break through cryptographic means alone
 
 **Security Level: Information-Theoretic + Computational**
 - Information-theoretic: CID reversal mathematically impossible (information loss)
 - Computational: Brute force computationally infeasible (2^256 search space)
-- Combined: Unbreakable with current and foreseeable future technology
+- Combined: Secure against all known and foreseeable cryptographic attacks
 
-**Requirements for "unbreakable" status:**
+**Important limitations:**
+- ⚠️ Does not protect against: social engineering, physical attacks, keystroke logging, screen capture, implementation bugs in consuming applications
+- ⚠️ Security depends on correct implementation of application-level controls (rate limiting, monitoring, etc.)
+- ⚠️ JVM memory constraints (secrets may persist in GC copies despite proactive wiping)
+
+**Accurate security claim:** When properly implemented, Encryptable is **computationally infeasible to break through cryptographic attacks** with current and foreseeable future technology. ✅
+
+**Requirements for maximum security:**
 1. ✅ Framework: Minimum 32 characters (256 bits) for @HKDFId, 22 characters (128 bits) for @Id, with entropy validation (enforced)
 2. ⚠️ Application: High-entropy secrets recommended (40+ random Base64 characters for @HKDFId for higher security margin)
 3. ⚠️ Application: Rate limiting implemented (10-100 attempts/second)
 4. ⚠️ Application: Account lockout after N failures
 5. ⚠️ Infrastructure: DDoS protection, monitoring
 
-**With these requirements met: Encryptable is absolutely unbreakable.** ✅
+**With these requirements met: Encryptable is cryptographically secure to the maximum extent feasible with current and foreseeable technology.** ✅
+
+**Important caveats:**
+- ⚠️ Security depends on correct implementation of application-level controls
+- ⚠️ Does not protect against physical attacks, social engineering, or implementation bugs in consuming applications
+- ⚠️ JVM memory constraints mean secrets cannot be guaranteed cleared from all memory copies (though proactive wiping significantly reduces risk)
 
 ---
 
@@ -308,12 +319,12 @@ With proper implementation (high-entropy secrets + rate limiting), Encryptable i
 Encryptable uses only symmetric cryptography (AES-256-GCM) and hash-based key derivation (HKDF with HMAC-SHA256 or HMAC-SHA512). The framework enforces high-entropy secrets and CIDs, and does not use any asymmetric cryptography (RSA, ECC, DH), which are most vulnerable to quantum attacks.
 
 **Quantum Threats to Encryptable's Primitives**
-- **Grover’s Algorithm:** Quadratically speeds up brute-force search for symmetric keys and hash preimages. For AES-256, this reduces effective security from 256 bits to 128 bits. For SHA-256, preimage resistance drops from 128 bits to 64 bits; for SHA-512, from 256 bits to 128 bits.
-- **Shor’s Algorithm:** Breaks asymmetric cryptography, but is not relevant to Encryptable (no asymmetric crypto used).
+- **Grover's Algorithm:** Quadratically speeds up brute-force search for symmetric keys and hash preimages. For AES-256, this reduces effective security from 256 bits to 128 bits. For SHA-256, preimage resistance drops from 256 bits to 128 bits; for SHA-512, from 512 bits to 256 bits.
+- **Shor's Algorithm:** Breaks asymmetric cryptography, but is not relevant to Encryptable (no asymmetric crypto used).
 
 **Impact on Encryptable**
-- **AES-256:** Grover’s algorithm reduces brute-force effort to 2^128, which is still infeasible for any foreseeable quantum computer.
-- **HKDF/HMAC-SHA256/512:** Preimage resistance is halved, but with enforced secret lengths (256 bits for @HKDFId, 128 bits for @Id), effective security remains strong (128 bits for secrets, 64 bits for random CIDs). SHA-512 is even stronger.
+- **AES-256:** Grover's algorithm reduces brute-force effort to 2^128, which is still infeasible for any foreseeable quantum computer.
+- **HKDF/HMAC-SHA256/512:** Preimage resistance is halved, but with enforced secret lengths (256 bits for @HKDFId, 128 bits for @Id), effective security remains strong (128 bits for SHA-256, 256 bits for SHA-512).
 - **@HKDFId secrets:** 256 bits (32 chars) → 128 bits quantum security (still strong)
 - **@Id CIDs:** 128 bits (22 chars) → 128 bits collision resistance (quantum computers do not reduce collision resistance; relevant only for addressing, not for secrets)
 - **No asymmetric crypto:** Shor’s algorithm does not apply.
@@ -328,8 +339,8 @@ Encryptable uses only symmetric cryptography (AES-256-GCM) and hash-based key de
 | Primitive       | Classical Security | Quantum Security | Status for Encryptable                                |
 |-----------------|------------------|------------------|-------------------------------------------------------|
 | AES-256         | 256 bits         | 128 bits         | ✅ Still secure                                        |
-| SHA-256 (HKDF)  | 128 bits         | 64 bits          | 🟡 Acceptable for KDF, not for long-term hashes alone |
-| SHA-512 (HKDF)  | 256 bits         | 128 bits         | ✅ Still secure                                        |
+| SHA-256 (HKDF)  | 256 bits (preimage) | 128 bits          | ✅ Still secure for KDF usage |
+| SHA-512 (HKDF)  | 512 bits (preimage) | 256 bits         | ✅ Still secure                                        |
 | @HKDFId secrets | 256 bits         | 128 bits         | ✅ Still secure                                        |
 | @Id CIDs (not a secret) | 128 bits (collision resistance) | 128 bits (collision resistance; quantum computers do not reduce collision resistance) | 🟢 Not used for secrets; only relevant for addressing/collision resistance |
 
@@ -357,13 +368,13 @@ Since the attacker does not know which entry is which, they could attempt to "cr
 
 ## 2. Architecture Security
 
-### 2.1 Anonymous Request-Scoped Knowledge Architecture ✅ Excellent (INNOVATION)
+### 2.1 Transient Knowledge (Request-Scoped) Architecture ✅ Excellent (INNOVATION)
 
-**Encryptable introduces "Anonymous Request-Scoped Knowledge" - a stronger privacy model than traditional server-side approaches.**
+**Encryptable introduces "Transient Knowledge" (request-scoped knowledge) - a stronger privacy model than traditional server-side approaches.**
 
-#### Traditional Zero-Knowledge vs Anonymous Request-Scoped Knowledge
+#### Traditional Zero-Knowledge vs Transient Knowledge
 
-| What is Stored? | Traditional Zero-Knowledge (Signal, ProtonMail) | Encryptable (Anonymous Request-Scoped Knowledge) |
+| What is Stored? | Traditional Zero-Knowledge (Signal, ProtonMal) | Encryptable (Transient Knowledge) |
 |----------------|-------------------------------------|----------------------------------|
 | Usernames/Email | ✅ Stored | ❌ **NOTHING stored** |
 | Passwords (hashed) | ✅ Stored | ❌ **NOTHING stored** |
@@ -375,7 +386,7 @@ Since the attacker does not know which entry is which, they could attempt to "cr
 
 **Traditional Zero-Knowledge:** Server cannot access content, but knows WHO you are and THAT you have data.
 
-**True Stateless Request-Scoped Knowledge:** Server knows NOTHING - not who you are, not that you exist, not even that your data belongs to a "user". Just cryptographically-addressed encrypted data.
+**Transient Knowledge (Request-Scoped):** Server cannot identify users - not who you are, not which entities belong to which user, not even that your data belongs to a "user". Just cryptographically-addressed encrypted data (server can see entities exist but cannot correlate them to users), and secrets are only present in memory for the duration of a request.
 
 #### Key Innovation: No User Identity on Server
 
@@ -403,12 +414,16 @@ That's it. No username. No password. No identity. NOTHING.
    - No passwords to crack (not even hashes)
    - No 2FA secrets to steal
    - Just meaningless CIDs and encrypted data
+   
+   **What attacker CAN observe:** Total entity count (approximate scale), entity sizes, creation timestamps (if stored). **What attacker CANNOT do:** Identify users, correlate entities to users, or decrypt data without secrets.
 
 2. **Perfect Privacy:** Server literally cannot:
    - Know who you are
-   - Count users
-   - Track activity patterns
+   - Identify which entity belongs to which user
+   - Track activity patterns (without user identifiers)
    - Correlate data between "users" (no user concept exists)
+   
+   **Note:** Server *can* count total entities in the database (revealing approximate scale), but cannot identify individual users or correlate entities to specific users.
 
 3. **Regulatory Advantage:**
    - GDPR: No personal data stored → No data controller responsibilities
@@ -444,22 +459,46 @@ That's it. No username. No password. No identity. NOTHING.
 3. **Compliance:** GDPR data minimization, HIPAA access controls, PCI-DSS zero custodians
 4. **User Control:** Only user can decrypt their data
 
-**🔴 Critical: `@Encrypt` Requires `@HKDFId` (Not `@Id`)**
+**🔑 Two ID Strategies with Different Security Models**
 
-The framework provides two ID types with **vastly different security properties:**
+The framework provides two ID types with **different security properties:**
 
-1. **`@HKDFId`** (Secure for encryption):
+1. **`@HKDFId`** (Derives keys from entity secret):
    - Secret → HKDF → CID (one-way derivation)
    - CID cannot be reversed to obtain secret
+   - Encryption keys derived from the entity's own secret
+   - ✅ **Completely independent from master secret**
    - ✅ Safe to use with `@Encrypt`
 
-2. **`@Id`** (Cannot use encryption):
-   - Secret → ByteArray → CID (direct conversion, reversible)
-   - CID **contains the secret** in plain form
-   - 🔴 **Framework completely disables `@Encrypt` for `@Id` entities**
-   - Why? Prevents false sense of security - users might think data is encrypted when the secret is exposed in the CID itself
+2. **`@Id`** (Uses master secret for encryption):
+   - Secret → ByteArray → CID (direct conversion)
+   - CID is the secret itself (non-secret ID, used for public identifiers)
+   - ✅ **Now supports `@Encrypt` using the master secret** (previously unsupported)
+   - Encryption keys derived from the **master secret**, not the entity's ID
+   - ⚠️ **Requires master secret to be configured** (`encryptable.master.secret`)
 
-**Secure-by-design enforcement:** The framework **blocks** `@Encrypt` on `@Id` entities at the framework level. Using `@Id` + `@Encrypt` would store the encryption key (secret) in the database as the CID itself—making encryption worthless. Rather than allow this dangerous misconfiguration, the framework prevents it entirely.
+**Historical Note:** Prior to version 1.0.4, `@Encrypt` was not supported for `@Id` entities because there was no master secret mechanism. The framework blocked this combination to prevent a false sense of security. With the introduction of the master secret feature, `@Id` entities can now use `@Encrypt` safely, as encryption keys are derived from the master secret rather than the non-secret ID.
+
+**Key Security Difference:**
+- **`@HKDFId` entities:** Each entity uses its own derived secret for encryption. If one entity's secret is compromised, other entities remain secure. The master secret is not used at all.
+- **`@Id` entities:** All encrypted fields use the master secret. If the master secret is compromised, all `@Id` entities with `@Encrypt` fields are at risk. However, `@HKDFId` entities remain completely unaffected.
+
+**When to Use Each:**
+- **Use `@HKDFId`** when you need maximum security and per-entity cryptographic isolation (e.g., user accounts, sensitive documents)
+- **Use `@Id`** when you need non-secret, shareable identifiers and are comfortable with master-secret-based encryption for fields (e.g., public resources with some encrypted metadata)
+
+**Important: Master Secret Rotation Complexity**
+
+Rotating the master secret for `@Id` entities is **not trivial**. Because all `@Id` entities with `@Encrypt` fields share the master secret for encryption, changing the master secret requires:
+
+1. Re-encrypting **all** `@Id` entity data (decrypt with old secret, encrypt with new secret)
+2. Maintaining both old and new secrets during transition
+3. Potential downtime or complex dual-secret handling
+4. Risk of data loss if migration fails
+
+For this reason, if you anticipate needing frequent secret rotation, **prefer `@HKDFId` entities**, where each entity has its own secret and rotation is per-user, not system-wide.
+
+See [Limitations - Master Secret Rotation](LIMITATIONS.md#-master-secret-rotation-is-complex) for detailed migration procedures.
 
 ### 2.2 Cryptographic Addressing ✅ Innovative
 
@@ -523,6 +562,76 @@ As documented in [Limitations](LIMITATIONS.md):
 | TLS/HTTPS | Infrastructure | ✅ Out of scope |
 
 **Assessment:** ✅ Excellent scope definition. Framework focuses on cryptographic security; attack mitigation is application responsibility.
+
+### 3.3 Developer Responsibility: Secret Handling ✅ Universal Concern
+
+**Concern:** "A malicious or careless developer could log or save secrets, bypassing all security."
+
+**Response:** ✅ **This is a universal concern that applies to EVERY security framework in EVERY programming language, not specific to Encryptable.**
+
+**Why This Is Developer Responsibility:**
+
+1. **Universal to All Frameworks:**
+   - Signal Protocol: Developer can log encryption keys before use
+   - TLS/HTTPS: Developer can log private keys, certificates, session keys
+   - OAuth/JWT: Developer can log tokens, client secrets
+   - Database encryption: Developer can log passwords, connection strings
+   - **ANY cryptographic library:** Developer has access to keys/secrets before passing to the library
+
+2. **Cannot Be Prevented by Framework:**
+   - No framework can prevent a developer from intentionally logging secrets
+   - Code runs in developer's application with developer's permissions
+   - Framework cannot control what developers do with data before/after framework calls
+   - This is a **trust boundary issue**, not a framework security issue
+
+3. **Industry Standard Position:**
+   - All security frameworks assume developers follow secure coding practices
+   - Documentation and best practices are provided (Encryptable does this ✅)
+   - Code reviews, security audits, and access controls are organizational responsibilities
+   - Malicious insiders are an organizational security problem, not a framework problem
+
+**What Encryptable DOES Provide:**
+
+✅ **Minimizes attack surface:**
+- Secrets are only in memory during request scope (transient knowledge)
+- Automatic memory wiping at request end (reduces forensic exposure)
+- No secrets stored in database (nothing to leak from DB breach)
+- Fail-fast on memory clearing failures (alerts to privacy issues)
+
+✅ **Developer guidance:**
+- Clear documentation on secret handling best practices
+- Memory hygiene recommendations ([MEMORY_HIGIENE_IN_ENCRYPTABLE.md](MEMORY_HIGIENE_IN_ENCRYPTABLE.md))
+- Security audit document (this document)
+- Examples of proper usage
+
+✅ **Secure by default:**
+- Secrets never logged by framework
+- No debug output of sensitive data
+- Secure failure handling (no plaintext exposure on errors)
+
+**Comparison to Other Frameworks:**
+
+| Framework | Can Developer Log Secrets? | Framework Position |
+|-----------|---------------------------|-------------------|
+| Signal Protocol | ✅ Yes (before encryption) | Developer responsibility |
+| TLS/OpenSSL | ✅ Yes (private keys, session keys) | Developer responsibility |
+| Spring Security | ✅ Yes (passwords, tokens) | Developer responsibility |
+| AWS KMS SDK | ✅ Yes (plaintext keys after decryption) | Developer responsibility |
+| **Encryptable** | ✅ Yes (secrets before framework use) | **Developer responsibility** |
+
+**Bottom Line:**
+
+This concern is **not a weakness of Encryptable**—it's a universal reality of software development. **Every security framework trusts developers to handle secrets responsibly.** The alternative (trying to prevent developers from accessing their own data) is both technically impossible and philosophically wrong.
+
+**Mitigation (Organizational Level):**
+- Code reviews (catch accidental logging)
+- Security training (educate developers)
+- Static analysis tools (detect common mistakes like `logger.info(secret)`)
+- Access controls (limit who can deploy code)
+- Audit logs (detect suspicious behavior)
+- Separation of duties (multiple approvals for production changes)
+
+**Verdict:** ✅ **Not a framework security issue.** Encryptable correctly handles secrets within its scope and provides excellent guidance. Developer behavior is an organizational responsibility, not a framework responsibility.
 
 ---
 
@@ -675,10 +784,10 @@ See [MEMORY_HIGIENE_IN_ENCRYPTABLE.md](MEMORY_HIGIENE_IN_ENCRYPTABLE.md) for ful
 
 ## 8. Final Verdict
 
-Encryptable is rated as **Excellent** for cryptographic security, architecture, and failure handling, and is production-ready for most use cases, pending a professional audit for regulated industries. The framework’s unique strengths include:
+Encryptable is rated as **Excellent** for cryptographic security, architecture, and failure handling, and is production-ready for most use cases, pending a professional audit for regulated industries. The framework's unique strengths include:
 
 - No exploitable cryptographic vulnerabilities identified
-- Anonymous request-scoped knowledge architecture (no user identity or credentials stored)
+- Transient knowledge (request-scoped) architecture (no user identity or credentials stored)
 - Strict minimum secret length and entropy enforcement
 - Proactive memory exposure mitigation: secrets and sensitive data are wiped from JVM memory at the end of each request, with fail-fast enforcement if wiping fails
 - Honest documentation of limitations and clear separation of framework vs. application responsibilities
@@ -690,4 +799,4 @@ Encryptable is rated as **Excellent** for cryptographic security, architecture, 
 
 **Note:** The proactive memory wiping strategy significantly reduces the risk of accidental secret exposure in memory dumps or forensic analysis, raising the bar for privacy and auditability.
 
-**Bottom line:** Encryptable sets a new standard for privacy and cryptographic safety in JVM applications. With proper application-level controls and compliance validation where required, it is suitable for production deployment.
+**Bottom line:** Encryptable delivers production-grade cryptography with innovative architecture that advances the state of request-scoped security in JVM applications. With proper application-level controls and compliance validation where required, it is suitable for production deployment. As an early-stage framework, wider community adoption and real-world validation would further strengthen confidence in its production readiness.
