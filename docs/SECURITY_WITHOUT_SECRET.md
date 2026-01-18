@@ -53,8 +53,7 @@ For perspective:
   "profile": {
     "secret": "wQ7xR3mP9kL5vB2nH8jK1dF6sA4tY0zC"
   },
-  "gridFsFields": ["avatar"],
-  "createdAt": "2025-10-17T10:30:00Z"
+  "gridFsFields": ["avatar"]
 }
 ```
 

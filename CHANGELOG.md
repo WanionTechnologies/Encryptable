@@ -20,9 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.2** (2025-12-17) - Reverted Change to Aspect Application Reliability, see details below
 - **1.0.3** (2025-12-20) - Documentation: Zero-Knowledge → Transient Knowledge terminology
 - **1.0.4** (2026-01-07) - Master Secret Support for @Id Entities
+- **1.0.5** (2026-01-18) - Security: Remove Cross-Reference Leak Vectors
 
 ---
-
 ## [1.0.0] - 2025-12-12 (Initial Release)
 
 ### 🎉 Initial Release
@@ -182,6 +182,47 @@ If upgrading from < v1.0.4 with existing @Id entities that reference @HKDFId ent
 See [HKDFID_VS_ID.md](docs/HKDFID_VS_ID.md) for complete details on choosing between @HKDFId and @Id entities.
 
 ---
+
+## [1.0.5] - 2026-01-18
+
+### 🔒 Security
+
+#### Removed Cross-Reference Leak Vectors
+- **Removed `createdByIP` field** from `Encryptable` base class
+- **Removed `createdAt` field** from `Encryptable` base class
+
+**Rationale:**
+These fields represented potential cross-reference attack vectors that could leak correlation information between entities:
+- `createdByIP` could reveal that "entity A was created by the same person as entity B" by correlating IP addresses
+- `createdAt` could reveal temporal relationships, exposing that "entities X, Y, Z were created at similar times"
+
+**Migration:**
+If your application requires these fields, you can restore the exact same behavior by adding them to your entity classes. 
+
+**Bonus:** Now that these fields are opt-in, you can encrypt them with `@Encrypt` for additional security:
+
+```kotlin
+class MyEntity : Encryptable<MyEntity>() {
+    @HKDFId override var id: CID? = null
+    
+    // Restore previous default behavior (plaintext, like before)
+    var createdByIP: String = EncryptableContext.getRequestIP()
+    var createdAt: Instant = Instant.now()
+    
+    // OR encrypt them for additional security (NEW capability!)
+    @Encrypt var createdByIP: String = EncryptableContext.getRequestIP()
+    @Encrypt var createdAt: Instant = Instant.now()
+}
+```
+
+**Benefits:**
+- **Opt-in rather than mandatory** - Only add these fields if your application needs them
+- **Can now be encrypted** - Previously stored in plaintext, now you can use `@Encrypt` for additional security
+- **Seamless migration** - Restore exact same automatic behavior if needed
+
+**Breaking Change:** While this is technically a breaking change if you were relying on these default fields, migration is seamless and actually provides a security upgrade - you can now encrypt these fields whereas they were always plaintext before. This update enhances cryptographic isolation by making these potentially leaky fields opt-in rather than mandatory.
+
+--- 
 
 ## Contributing
 

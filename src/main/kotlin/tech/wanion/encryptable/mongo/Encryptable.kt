@@ -9,7 +9,6 @@ import org.springframework.data.mongodb.gridfs.GridFsTemplate
 import java.io.InputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
-import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import tech.wanion.encryptable.EncryptableContext
@@ -57,8 +56,6 @@ import tech.wanion.encryptable.util.extensions.*
  *
  * @property secret High-entropy secret for deterministic ID generation and encryption. Used as path parameter and decryption key. Not persisted.
  * @property id MongoDB CID, deterministically generated from the secret. Abstract, must be implemented by subclasses.
- * @property createdByIP The IP address of the creator of this entity. Set automatically from the current request context.
- * @property createdAt Timestamp of entity creation. Set automatically to the current time upon instantiation.
  * @property gridFsFields MutableList of field names for ByteArray fields stored in GridFS.
  * @property metadata Cached metadata for encrypted fields and ID strategy.
  * @property encryptableFieldMap Map of field names for fields of type Encryptable to their corresponding secret values.
@@ -290,20 +287,6 @@ abstract class Encryptable<T: Encryptable<T>> {
      * all the associate resources (GridFsFiles, @PartOf entities) will be deleted, because the entity is considered new (id == null).
      */
     abstract var id: CID?
-
-    /**
-     * createdByIP
-     *
-     * The IP address of the creator of this entity. Set automatically from the current request context.
-     */
-    var createdByIP: String = EncryptableContext.getRequestIP()
-
-    /**
-     * createdAt
-     *
-     * Timestamp of entity creation. Set automatically to the current time upon instantiation.
-     */
-    var createdAt: Instant = Instant.now()
 
     /**
      * encryptableFieldMap
@@ -693,7 +676,7 @@ abstract class Encryptable<T: Encryptable<T>> {
         metadata.encryptFields.values.forEach { field ->
             fun processData(data: Any?): Any? {
                 return when (data) {
-                    is ByteArray -> return data // ByteArray fields are handled above.
+                    is ByteArray -> data // ByteArray fields are handled above.
                     is String -> if (isWrite) AES256.encrypt(secret, this, data)
                                     else AES256.decrypt(secret, this, data)
                     is List<*> -> {
@@ -917,7 +900,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * Checks for deep equality between this [Encryptable] instance and another object.
      *
      * This method first checks for referential and class equality, then compares all relevant fields:
-     * - [encryptableListFieldMap], [encryptableFieldMap], [gridFsFields], [createdByIP], [createdAt]
+     * - [encryptableListFieldMap], [encryptableFieldMap], [gridFsFields]
      * - All fields listed in [Metadata.persistedFields] are compared, including deep comparison for [ByteArray] fields.
      *
      * The comparison is null-safe and handles deep equality for arrays and collections.
