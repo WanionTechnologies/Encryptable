@@ -12,7 +12,7 @@ import java.util.Base64
 plugins {
     kotlin("jvm") version "2.2.21" // Kotlin JVM plugin
     kotlin("plugin.spring") version "2.2.21" // Kotlin Spring plugin
-    id("org.springframework.boot") version "4.0.0" // Spring Boot plugin
+    id("org.springframework.boot") version "4.0.2" // Spring Boot plugin
     id("io.spring.dependency-management") version "1.1.7" // Spring Dependency Management
     id("io.freefair.aspectj.post-compile-weaving") version "9.0.0"
     id("maven-publish") // Required for publishing block
@@ -20,8 +20,9 @@ plugins {
     id("org.jetbrains.dokka") version "1.9.20"
 }
 
+
 group = "tech.wanion"
-version = "1.0.5"
+version = "1.0.6"
 
 java {
 	toolchain {
@@ -62,15 +63,17 @@ dependencies {
     implementation("at.favre.lib:hkdf:$hkdfVersion")
 
     // AspectJ for AOP support
-    //implementation("org.springframework:spring-aspects:$springAspectsVersion")
+    implementation("org.springframework:spring-aspects:$springAspectsVersion")
     implementation("org.aspectj:aspectjrt:$aspectjVersion")
     implementation("org.aspectj:aspectjweaver:$aspectjVersion")
+
+    // AspectJ Test Support
+    testAspect("tech.wanion:encryptable")
 
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.0.0")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:2.0.0")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -85,20 +88,12 @@ tasks.withType<KotlinCompile> {
 tasks.withType<Test> {
 	useJUnitPlatform()
 
-	// Enable AspectJ load-time weaving for tests, using aop.xml.
-	val aspectjWeaver = configurations.testRuntimeClasspath.get().files.find { it.name.contains("aspectjweaver") }
-	if (aspectjWeaver != null) {
-		jvmArgs("-javaagent:${aspectjWeaver.absolutePath}")
-		// Point LTW to our test aop.xml that limits weaving scope to our packages
-		systemProperty("org.aspectj.weaver.loadtime.configuration","META-INF/aop.xml")
-		// Optional: reduce noise from missing types in third-party libs
-		systemProperty("org.aspectj.weaver.DUMP.before","false")
-	}
-
 	// Add JVM arguments to open javax.crypto.spec and java.lang for reflection during tests
 	jvmArgs(
 		"--add-opens", "java.base/javax.crypto.spec=ALL-UNNAMED",
-		"--add-opens", "java.base/java.lang=ALL-UNNAMED"
+		"--add-opens", "java.base/java.lang=ALL-UNNAMED",
+        // Enable dynamic agent loading for Mockito
+        "-XX:+EnableDynamicAgentLoading"
 	)
 }
 

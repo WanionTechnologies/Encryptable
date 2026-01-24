@@ -8,10 +8,14 @@ Encryptable requires a modern JVM environment and specific runtime configuration
 
 ## 🏷️ Minimum Java Version
 
-- **Java 21 or higher** is required.
+- **Java 21 or higher** is required to run Encryptable.
   - Virtual threads (Project Loom) are used for concurrency.
 
----
+
+**It is recommended to enable virtual threads in Spring Boot** by adding the following line to your `application.properties`:
+  ```properties
+  spring.threads.virtual.enabled=true
+```
 
 ## 🧩 Dependencies
 
@@ -20,26 +24,26 @@ The following dependencies are required for Encryptable.
 
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| org.jetbrains.kotlin:kotlin-stdlib | 2.2.21 | Kotlin standard library |
-| org.jetbrains.kotlin:kotlin-reflect | 2.2.21 | Kotlin reflection support |
-| org.springframework.boot:spring-boot-starter-webmvc | 4.0.0 | Spring Boot web framework |
-| org.springframework.boot:spring-boot-starter-data-mongodb | 4.0.0 | MongoDB persistence layer |
-| at.favre.lib:hkdf | 2.0.0 | HKDF key derivation (RFC 5869) |
-| org.aspectj:aspectjrt | 1.9.25 | AspectJ runtime |
-| org.aspectj:aspectjweaver | 1.9.25 | AspectJ weaving (AOP) |
+| org.jetbrains.kotlin:kotlin-stdlib | 2.2.21  | Kotlin standard library |
+| org.jetbrains.kotlin:kotlin-reflect | 2.2.21  | Kotlin reflection support |
+| org.springframework.boot:spring-boot-starter-webmvc | 4.0.2   | Spring Boot web framework |
+| org.springframework.boot:spring-boot-starter-data-mongodb | 4.0.2   | MongoDB persistence layer |
+| at.favre.lib:hkdf | 2.0.0   | HKDF key derivation (RFC 5869) |
+| org.aspectj:aspectjrt | 1.9.25  | AspectJ runtime |
+| org.aspectj:aspectjweaver | 1.9.25  | AspectJ weaving (AOP) |
 
 > **Note:** These versions are based on the current release and may be updated in future versions. Always check the latest starter for up-to-date versions.
 
 ---
 
-## ⚙️ Gradle Configuration
+## ⚙️ Gradle Configurations
 
 ### Gradle Plugins
 
 The following Gradle plugins are required for Encryptable to function correctly:
 
 ```kotlin
-id("org.springframework.boot") version "4.0.0"
+id("org.springframework.boot") version "4.0.2"
 id("io.spring.dependency-management") version "1.1.7"
 id("io.freefair.aspectj.post-compile-weaving") version "9.0.0"
 ```
@@ -54,14 +58,17 @@ To add the Encryptable Starter to your project, use:
 
 ```kotlin
 dependencies {
-    implementation("tech.wanion:encryptable-starter:1.0.4")
-    aspect("tech.wanion:encryptable-starter:1.0.4")
+    // Encryptable Starter (includes all required dependencies)
+    implementation("tech.wanion:encryptable-starter:1.0.6")
+    
+    // Encryptable Aspects
+    aspect("tech.wanion:encryptable:1.0.6")
+    // Encryptable Aspects for Tests
+    testAspect("tech.wanion:encryptable:1.0.6")
 }
 ```
 
----
-
-## ⚙️ Required Gradle Tasks Configuration
+###  Gradle Tasks
 
 To ensure Encryptable runs correctly in your development environment, add the following configuration to your `build.gradle.kts`:
 
@@ -69,20 +76,12 @@ To ensure Encryptable runs correctly in your development environment, add the fo
 tasks.withType<Test> {
     useJUnitPlatform()
 
-    // Enable AspectJ load-time weaving for tests, using our aop.xml.
-    val aspectjWeaver = configurations.testRuntimeClasspath.get().files.find { it.name.contains("aspectjweaver") }
-    if (aspectjWeaver != null) {
-        jvmArgs("-javaagent:${aspectjWeaver.absolutePath}")
-        // Point LTW to our test aop.xml that limits weaving scope to our packages
-        systemProperty("org.aspectj.weaver.loadtime.configuration","META-INF/aop.xml")
-        // Optional: reduce noise from missing types in third-party libs
-        systemProperty("org.aspectj.weaver.DUMP.before","false")
-    }
-
     // Add JVM arguments to open javax.crypto.spec and java.lang for reflection during tests
     jvmArgs(
         "--add-opens", "java.base/javax.crypto.spec=ALL-UNNAMED",
-        "--add-opens", "java.base/java.lang=ALL-UNNAMED"
+        "--add-opens", "java.base/java.lang=ALL-UNNAMED",
+      // Enable dynamic agent loading for Mockito
+      "-XX:+EnableDynamicAgentLoading"
     )
 }
 
@@ -112,6 +111,16 @@ To enable secure reflection and memory clearing, add the following JVM arguments
 - Without these, you will encounter `InaccessibleObjectException` when clearing secrets, and the application will refuse to start.
 - **Encryptable will not run unless these arguments are set. This is a deliberate fail-fast security feature: if the arguments are missing, Encryptable will refuse to start, ensuring that security is never silently compromised.**
 - For development and testing, these arguments are auto-configured by the Gradle tasks. In production, you must add them manually.
+
+### Production Deployment
+
+When running a built JAR in production, use the following command:
+
+```shell
+java --add-opens java.base/javax.crypto.spec=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED -jar jarname.jar
+```
+
+Replace `jarname.jar` with the actual name of your application JAR file.
 
 ---
 
@@ -148,6 +157,17 @@ For advanced use cases requiring multi-document transactions or atomic operation
 
 ---
 
+## 🛡️ Security & Memory Enclave (Optional)
+
+For ultra-high-security deployments, consider running the JVM in a hardware-backed encrypted memory enclave:
+- **Intel SGX/TDX** or **AMD SEV-SNP**
+- This ensures all memory is encrypted at the hardware level.
+- Adds 2–50% performance overhead; recommended only for government, military, or compliance-mandated environments.
+
+For details on hardware-backed encrypted memory enclaves, see the dedicated guide: [Encrypted Memory Enclaves](ENCRYPTED_MEMORY_ENCLAVES.md).
+
+---
+
 ## 🏁 Quick Checklist
 
 - [x] Java 21+ installed
@@ -157,17 +177,6 @@ For advanced use cases requiring multi-document transactions or atomic operation
 - [x] JVM args for reflection set (see section above)
 - [x] MongoDB running
 - [x] Spring Boot configured
-
----
-
-## 🛡️ Security & Memory Enclave (Optional)
-
-For ultra-high-security deployments, consider running the JVM in a hardware-backed encrypted memory enclave:
-- **Intel SGX/TDX** or **AMD SEV-SNP**
-- This ensures all memory is encrypted at the hardware level.
-- Adds 2–50% performance overhead; recommended only for government, military, or compliance-mandated environments.
-
-For details on hardware-backed encrypted memory enclaves, see the dedicated guide: [Encrypted Memory Enclaves](ENCRYPTED_MEMORY_ENCLAVES.md).
 
 ---
 

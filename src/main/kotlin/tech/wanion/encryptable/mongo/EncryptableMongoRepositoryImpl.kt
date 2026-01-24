@@ -8,6 +8,7 @@ import org.springframework.data.domain.Example
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
+import org.springframework.data.mongodb.core.BulkOperations
 import org.springframework.data.mongodb.core.MongoOperations
 import org.springframework.data.mongodb.core.mapping.MongoPersistentEntity
 import org.springframework.data.mongodb.core.query.Criteria
@@ -55,12 +56,9 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         private val logger = LoggerFactory.getLogger(EncryptableMongoRepositoryImpl::class.java)
 
         /** ID
-         *
          * The MongoDB field name for the entity ID.
-         *
-         * **Type:** `String`
          */
-        private const val MONGO_ID_FIELD = "_id"
+        private const val MONGO_ID_FIELD: String = "_id"
 
         /**
          * **prepareMethod**
@@ -70,8 +68,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - **Internal usage only:** Used by repository logic to initialize entities via reflection.
          * - The method signature includes only a Continuation parameter, as required for Kotlin suspend functions.
          * - This `Method` is cached for performance and should not be used outside repository internals.
-         *
-         * **Type:** `Method`
          */
         val prepareMethod: Method = Encryptable::class.java.getDeclaredMethod(
             "prepare"
@@ -85,8 +81,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - **Internal usage only:** Used by repository logic to decrypt entities via reflection.
          * - The method signature includes a `String` (secret) and a Continuation parameter, as required for Kotlin suspend functions.
          * - This `Method` is cached for performance and should not be used outside repository internals.
-         *
-         * **Type:** `Method`
          */
         val restoreMethod: Method = Encryptable::class.java.getDeclaredMethod(
             "restore",
@@ -102,8 +96,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - When invoked, it checks for broken references and cleans them up to maintain data integrity.
          * - Used internally by repository logic to trigger integrity checks via reflection.
          * - Should not be used outside repository internals.
-         *
-         * **Type:** `Method`
          */
         val integrityCheckAndCleanUpMethod: Method = Encryptable::class.java.getDeclaredMethod(
             "integrityCheckAndCleanUp",
@@ -117,8 +109,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - **Internal usage only:** Used by repository logic to invoke entity update via reflection.
          * - The method signature includes a `String` (secret) and a Continuation parameter, as required for Kotlin suspend functions.
          * - This `Method` is cached for performance and should not be used outside repository internals.
-         *
-         * **Type:** `Method`
          */
         val updateMethod: Method = Encryptable::class.java.getDeclaredMethod(
             "update"
@@ -134,8 +124,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          *   *Why?* the GridFs files will be encrypted with the new secret upon saving after rotation.
          * - Used internally by repository logic to trigger secret rotation via reflection.
          * - Should not be used outside repository internals.
-         *
-         * **Type:** `Method`
          */
         val beforeRotationMethod: Method = Encryptable::class.java.getDeclaredMethod(
             "beforeRotation"
@@ -152,8 +140,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          *   - Deletes child entities in `encryptableListFieldMap` and `encryptableFieldMap` only if their fields are annotated with `@PartOf`.
          * - Used internally by repository logic to trigger cascade deletion via reflection.
          * - Should not be used outside repository internals.
-         *
-         * **Type:** `Method`
          */
         val cascadeDeleteMethod: Method = Encryptable::class.java.getDeclaredMethod(
             "cascadeDelete"
@@ -368,7 +354,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         // oldSecret and newSecret should be cleared at the end of the request to limit exposure in memory.
         markForWiping(oldSecret, newSecret)
 
-        if (metadata.strategies == Encryptable.Metadata.Strategies.ID)
+        if (!metadata.isolated)
             throw UnsupportedOperationException("Secret rotation is not supported for entities using standard ID strategy. Use HKDF strategy for secret rotation support.")
 
         val startTime = Instant.now()
@@ -401,7 +387,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
                 "IP: $ip, " +
                 "Reason: New secret conflicts with existing entity"
             )
-            throw IllegalArgumentException("An entity with the new secret already exists. rotation aborted to prevent permanent data loss.")
+            throw IllegalArgumentException("An entity with the new secret already exists. rotation aborted to prevent permanent data loss")
         }
 
         // Audit log: rotation initiated
@@ -572,7 +558,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         val cursor = collection.find(filter).projection(projection)
         val existingCids = Collections.synchronizedSet(mutableSetOf<CID>())
         cursor.forEach { doc ->
-            val binary = doc.get(MONGO_ID_FIELD) as? Binary ?: return@forEach
+            val binary = doc[MONGO_ID_FIELD] as? Binary ?: return@forEach
             existingCids.add(binary.cid)
         }
         return cidToSecretMap to existingCids
@@ -888,43 +874,50 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     /**
      * # flushThenClear
      *
-     * Flushes all tracked entity changes to the database and clears the tracking maps.
-     *
-     * This method performs the following steps:
-     * 1. Iterates over all tracked entities in the thread-local map.
-     * 2. Compares the initial and current hash codes to detect changes.
-     * 3. For changed entities, invokes the `update` method to persist only modified fields.
-     * 4. Iterates over all newly created entities marked for cleanup.
-     * 5. If any new entity is still marked as new (unsaved), invokes `cascadeDelete` to clean up resources.
-     * 6. Clears both the entity info map and new entities list to prevent memory leaks.
-     *
-     * This ensures that all modifications are persisted and any orphaned resources from unsaved new entities are cleaned up.
+     * Flushes all tracked entity changes to the database and clears thread-local tracking maps.
+     * This method processes both existing entities with changes and new entities marked for cleanup.
+     * It performs bulk updates for changed entities and cascade deletes for unsaved new entities.
+     * Finally, it clears the thread-local maps to prevent memory leaks.
      */
     override fun flushThenClear() {
         val entityInfoMap = getEntityInfoMap().values
         val newEntities = getNewEntityList()
-        entityInfoMap.parallelForEach {
-            val currentHashCodes = it.entity.hashCodes()
-            if (it.initialHashCode == currentHashCodes)
+
+        // Collect entities with changes for bulk update
+        // Chunked for performance
+        entityInfoMap.chunked(5000).parallelForEach { batch ->
+            val bulkOps = mongoOperations.bulkOps(BulkOperations.BulkMode.UNORDERED, typeClass)
+            var hasOperations = false
+            batch.forEach {
+                val currentHashCodes = it.entity.hashCodes()
+                if (it.initialHashCode == currentHashCodes)
+                    return@forEach
+                val entity = it.entity
+                // Entity has changed, perform update
+                // We ignore exceptions to ensure all entities are processed.
+                try {
+                    update(entity, it.initialHashCode, currentHashCodes, bulkOps)
+                    hasOperations = true
+                } catch (e: Exception) {
+                    logger.error("Failed to perform update on: ${e.message}", e)
+                }
+            }
+            if (!hasOperations)
                 return@parallelForEach
-            val entity = it.entity
-            // Entity has changed, perform update
-            // We ignore exceptions to ensure all entities are processed.
             try {
-                update(entity, it.initialHashCode, currentHashCodes)
+                bulkOps.execute()
             } catch (e: Exception) {
-                // log and continue
-                e.printStackTrace()
+                logger.error("Failed to execute bulk update batch: ${e.message}", e)
             }
         }
+
         newEntities.parallelForEach { newEntity ->
             if (!newEntity.isNew()) return@parallelForEach
             // New entity was not saved, perform cascade delete to clean up resources
             try {
                 cascadeDeleteMethod.invoke(newEntity)
             } catch (e: Exception) {
-                // log and continue
-                e.printStackTrace()
+                logger.error("Failed to cascade delete unsaved new entity: ${e.message}", e)
             }
         }
         entityInfoMap.clear()
@@ -951,21 +944,23 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * - Compares the initial and current hash codes to determine which fields have changed.
      * - Invokes the entity's update logic via reflection.
      * - Builds a MongoDB Update object for only the changed fields.
-     * - Executes a partial update using mongoOperations.updateFirst, updating only the modified fields.
+     * - Uses a BulkOperations instance to queue the update operation. updating only the modified fields.
      *
      * @param entity The entity to update. Must not be null and must already exist in the database.
      * @param initialHashCode The initial hash codes of the entity's fields.
      * @param hashCodes The current hash codes of the entity's fields.
+     * @param bulkOps The BulkOperations instance to use for batching updates.
      *
      * @throws UnsupportedOperationException If the entity is new (not yet persisted).
      * @throws IllegalArgumentException If the entity is null.
      */
-    private fun <S : T> update(entity: S, initialHashCode: Map<String, Int>, hashCodes: Map<String, Int>) {
+    private fun <S : T> update(entity: S, initialHashCode: Map<String, Int>, hashCodes: Map<String, Int>, bulkOps: BulkOperations) {
         Assert.notNull(entity, "Entity must not be null")
         if (entityInformation.isNew(entity))
             throw UnsupportedOperationException("This method should only be called to update an already existing entity, to insert a new entity, use .save(entity).")
         val changedFields = compareChangedFields(initialHashCode, hashCodes)
         if (changedFields.isEmpty()) return
+        // invoke update method, e.g. re-encrypt fields
         updateMethod.invoke(entity)
         val query = Query(Criteria.where("_id").`is`(entity.id))
         val update = Update()
@@ -973,7 +968,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             val value = entity.metadata.persistedFields[field]?.get(entity)
             update.set(field, value)
         }
-        mongoOperations.updateFirst(query, update, entityInformation.javaType)
+        bulkOps.updateOne(query, update)
     }
 
     /**

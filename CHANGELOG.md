@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.3** (2025-12-20) - Documentation: Zero-Knowledge → Transient Knowledge terminology
 - **1.0.4** (2026-01-07) - Master Secret Support for @Id Entities
 - **1.0.5** (2026-01-18) - Security: Remove Cross-Reference Leak Vectors
+- **1.0.6** (2026-01-24) - Performance: Code Optimizations & Bulk Updates
 
 ---
 ## [1.0.0] - 2025-12-12 (Initial Release)
@@ -29,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Encryptable 1.0.0 marks the first release of the framework, providing production-ready request-scoped (transient) knowledge encryption and ORM-like features for MongoDB.
 
-> **Why is Encryptable a framework and not just a library?** See [FAQ: Why is Encryptable called a "Framework"?](docs/FAQ.md#-why-is-encryptable-called-a-framework-instead-of-a-library)
+> **Why is Encryptable a framework and not just a library?** See [FAQ: Why is Encryptable a "Framework"?](docs/FAQ.md#-why-is-encryptable-called-a-framework-instead-of-a-library)
 
 ### Core Features
 
@@ -221,6 +222,31 @@ class MyEntity : Encryptable<MyEntity>() {
 - **Seamless migration** - Restore exact same automatic behavior if needed
 
 **Breaking Change:** While this is technically a breaking change if you were relying on these default fields, migration is seamless and actually provides a security upgrade - you can now encrypt these fields whereas they were always plaintext before. This update enhances cryptographic isolation by making these potentially leaky fields opt-in rather than mandatory.
+
+---
+
+## [1.0.6] - 2026-01-24
+
+### ⚡ Performance
+
+#### Code Optimizations
+- **Internal refactoring** - Improved code structure and efficiency across core components
+- **Memory management improvements** - Enhanced memory usage patterns for better resource utilization
+- **Reduced allocations** - Optimized hot paths to minimize object creation overhead
+
+#### Bulk Operations Support
+- **Bulk entity updates** - New support for efficiently updating multiple entities in a single operation
+- **Improved throughput** - Significant performance gains for applications processing large datasets
+
+**Benefits:**
+- **Better scalability** - Handle higher entity volumes with improved performance
+- **Lower latency** - Reduced overhead for multi-entity operations
+
+### 🔄 Dependencies
+
+- **Updated Spring Boot** - Upgraded from 4.0.0 to 4.0.2
+
+**Note:** This is a performance-focused release with no breaking changes or API modifications.
 
 --- 
 

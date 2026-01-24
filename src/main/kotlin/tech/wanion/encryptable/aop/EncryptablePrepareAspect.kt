@@ -50,7 +50,7 @@ class EncryptablePrepareAspect {
 
         metadata.byteArrayFields.entries.parallelForEach { (fieldName, field) ->
             // Get current byte array value, skip if null
-            val bytes = field.get(encryptable) as ByteArray? ?: return@parallelForEach
+            val bytes = field.get(encryptable) as? ByteArray? ?: return@parallelForEach
             // If field is already processed, skip
             if (gridFsFields.contains(fieldName)) return@parallelForEach
 

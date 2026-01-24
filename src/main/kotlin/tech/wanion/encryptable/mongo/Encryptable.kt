@@ -449,19 +449,26 @@ abstract class Encryptable<T: Encryptable<T>> {
             if (secret.length == 22) return@forEach // Likely an @Id reference, skip check
             val field = metadata.encryptableFields[fieldName] ?: return@forEach
             val type = field.type as Class<out Encryptable<*>>
-            val repository = getMetadataFor(type).repository
-            val entity = repository.findBySecretOrNull(secret) ?: return@forEach
-            field.set(this, entity.id.toString())
+            val id = getMetadataFor(type).strategies.getIDFromSecret(secret, type)
+            field.set(this, id.toString())
         }
         // Check lists
         encryptableListFieldMap.entries.forEach { (fieldName, secretList) ->
             val field = metadata.encryptableListFields[fieldName] ?: return@forEach
             val type = field.typeParameter() as Class<out Encryptable<*>>
-            val repository = getMetadataFor(type).repository
+            var needsReplace = false
+            for (secret in secretList) {
+                if (secret.length != 22) {
+                    needsReplace = true
+                    break
+                }
+            }
+            if (!needsReplace) return@forEach
+            val strategies = getMetadataFor(type).strategies
             secretList.smartReplaceAll { secret ->
                 if (secret.length == 22) return@smartReplaceAll secret // Likely an @Id reference, skip check
-                val entity = repository.findBySecretOrNull(secret) ?: return@smartReplaceAll secret
-                return@smartReplaceAll entity.id.toString()
+                val id = strategies.getIDFromSecret(secret, type)
+                return@smartReplaceAll id.toString()
             }
         }
     }
@@ -1026,8 +1033,8 @@ abstract class Encryptable<T: Encryptable<T>> {
 
         /** Map of field names to Field objects for fields annotated with @Encrypt (excluding @Transient, Encryptable, and List<Encryptable> fields). */
         val encryptFields: Map<String, Field> = encryptableClass.allFields.filter {
-            it.isAnnotationPresent(Encrypt::class.java) &&
             !it.isAnnotationPresent(Transient::class.java) &&
+            it.isAnnotationPresent(Encrypt::class.java) &&
             !encryptableFields.contains(it.name) &&
             !encryptableListFields.contains(it.name)
         }.associateBy { it.name }

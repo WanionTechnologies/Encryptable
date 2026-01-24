@@ -50,6 +50,7 @@ This design keeps Encryptable simple, flexible, and easy to integrate into a wid
 ## ⚡ Quick Start
 ```kotlin
 @EnableEncryptable
+@SpringBootApplication
 class Application
 
 // All entities must extend Encryptable<T>
@@ -81,8 +82,8 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 Add the Encryptable Starter dependency to your Gradle build:
 ```kotlin
 dependencies {
-    implementation("tech.wanion:encryptable-starter:1.0.4")
-    aspect("tech.wanion:encryptable-starter:1.0.4")
+    implementation("tech.wanion:encryptable-starter:1.0.6")
+    aspect("tech.wanion:encryptable:1.0.6")
 }
 ```
 
@@ -92,7 +93,6 @@ The starter already includes these dependencies in compatible versions.
 For all system and runtime requirements, see [Prerequisites](docs/PREREQUISITES.md).
 
 ---
-
 
 ## 🆘 Getting Help
 

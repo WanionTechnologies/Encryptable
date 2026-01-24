@@ -29,7 +29,7 @@ import org.springframework.data.mongodb.core.convert.MongoCustomConversions
  */
 @Suppress("UNCHECKED_CAST")
 @WritingConverter
-class MapToDocumentConverter : Converter<Map<Any?, Any?>, Document> {
+class MapToDocumentConverter : Converter<Map<Any?, Any?>, Document?> {
     /**
      * Recursively converts a [Map] into a BSON [Document].
      *

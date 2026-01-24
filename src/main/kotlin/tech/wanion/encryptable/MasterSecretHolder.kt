@@ -46,6 +46,7 @@ object MasterSecretHolder {
 
     /**
      * Retrieves a copy of the master secret.
+     * if it wasn't a copy, the Master Secret would be zerified at the request end, making it unusable for further en/decryption operations.
      * @return A copy of the master secret.
      * @throws IllegalStateException if the master secret is not set.
      */

@@ -57,6 +57,7 @@ Now, with that context in mind, let's examine the specific technical and platfor
 - **Querying encrypted fields:** Cannot query or filter encrypted fields at the database level; must query in-memory after decryption
 - **Indexing encrypted fields:** Cannot index encrypted fields; only unencrypted fields can be indexed
 - **Performance characteristics:** 10–15% overhead due to encryption/decryption; hardware-accelerated on modern processors (AES-NI since 2010+, SHA extensions since 2019+)
+- **AES-GCM all-or-nothing property (universal to all AES-GCM systems):** Single bit corruption causes encrypted field to become unrecoverable (returns encrypted data); entity remains accessible but affected field is lost; requires reliable storage infrastructure and comprehensive backup strategy
 - **Secret rotation:** No built-in automation; must be performed manually or by user-initiated process
 - **Brute-force/DDoS mitigation:** No built-in detection or mitigation; must be handled at the application/infrastructure level
 
@@ -695,6 +696,121 @@ Encryptable's cryptographic operations benefit significantly from modern CPU ins
 **Special case:**
 - If your entity contains large byte arrays stored in GridFS, the performance drop may be higher when those fields are accessed, due to the cost of encrypting/decrypting large data.\
 However, since GridFS fields are lazy loaded, this overhead only occurs when the data is actually accessed, not on every entity operation.
+
+---
+
+## ⚠️ AES-GCM All-or-Nothing Property: Field-Level Data Corruption
+
+> **Note:** This is **not specific to Encryptable**—it's a fundamental property of **AES-GCM** (and all authenticated encryption modes).\
+> Any system using AES-256-GCM, AES-128-GCM, ChaCha20-Poly1305, or similar authenticated encryption will face this same behavior.\
+> This is documented here for transparency, but it's a **universal trade-off** when choosing authenticated encryption over unauthenticated modes.
+
+Encryptable uses **AES-256-GCM** (Galois/Counter Mode) for authenticated encryption, which provides both confidentiality and integrity protection.\
+However, GCM has an **all-or-nothing property**: if even a **single bit** of the encrypted data becomes corrupted (whether in the ciphertext, IV, or authentication tag), the decryption operation will fail.
+
+**What actually happens in Encryptable:**
+- ⚠️ **Silent failure with encrypted data return** - When decryption fails, `AES256.decrypt()` returns the **encrypted (corrupted) data back unchanged**
+- ✅ **Entity remains accessible** - Other fields in the entity are unaffected; only the corrupted field is lost
+- ❌ **Field is permanently unrecoverable** - The corrupted field will contain corrupted encrypted binary data instead of the original plaintext
+- ❌ **GridFS file corruption** - A corrupted encrypted GridFS file returns corrupted encrypted data, making the file unusable
+- ✅ **Intentional security feature** - GCM's authentication ensures tampering is detected, preventing attackers from modifying encrypted data
+
+**Why this behavior:**
+Encryptable's `AES256.decrypt()` method uses **silent failure with audit logging**.\
+When decryption fails (due to corruption or tampering), it logs the error internally but returns the encrypted data to prevent application crashes.\
+This means the entity can still be loaded and other fields accessed, but the corrupted field is effectively lost.
+
+**Common causes of data corruption:**
+- 💾 **Storage media failures** - Bit rot, disk errors, SSD wear
+- 🌐 **Network transmission errors** - Though rare with TCP checksums
+- 🐛 **Software bugs** - Database corruption, filesystem issues
+- ⚡ **Hardware failures** - RAM errors, cosmic ray bit flips (rare but possible)
+- 🔧 **Manual database edits** - Accidental modification of encrypted binary data
+
+**Why GCM behaves this way:**
+GCM includes an authentication tag that cryptographically verifies the integrity of the entire ciphertext.\
+Any modification—accidental or malicious—causes authentication to fail, and the cipher refuses to decrypt.\
+This is a **security feature**, not a bug: it prevents attackers from tampering with encrypted data.
+
+**Implications:**
+- **Field-level data loss** - Corrupted fields returns corrupted encrypted gibberish, but the rest of the entity remains accessible
+- **Silent degradation** - Application continues to function, but corrupted fields contain unusable data
+- **Detection challenges** - Corruption may not be immediately obvious; the entity loads successfully but with corrupted field data
+- **No automatic alerting** - Decryption failures are logged but don't throw exceptions to the application layer
+- **Backup criticality** - Regular, tested backups are **essential** since corrupted encrypted data cannot be recovered
+
+**Mitigation strategies:**
+
+1. **Reliable storage infrastructure**
+   - Use enterprise-grade storage with error correction (ECC RAM, ZFS, RAID with checksums)
+   - Enable MongoDB's journaling and replication for durability
+   - Use cloud providers with built-in data integrity guarantees (AWS EBS, Google Persistent Disks)
+
+2. **Comprehensive backup strategy**
+   - Implement automated, regular MongoDB backups
+   - Test backup restoration procedures regularly
+   - Consider point-in-time recovery capabilities
+   - Store backups in geographically distributed locations
+
+3. **Monitoring and alerting**
+   - Monitor storage health metrics (SMART data for disks, SSD wear indicators)
+   - Set up alerts for database errors or decryption failures
+   - Track and investigate any unexpected authentication failures
+
+4. **MongoDB best practices**
+   - Use MongoDB replica sets (minimum 3 nodes) for redundancy
+   - Enable write concerns (`w: majority`) to ensure data is written to multiple nodes
+   - Use `readConcern: "majority"` to avoid reading potentially corrupted data
+   - Regular `validate` commands to check collection integrity
+
+5. **Application-level resilience**
+   - Implement graceful error handling for decryption failures
+   - Log corruption events for investigation
+   - Provide user-facing error messages that explain data unavailability
+   - Consider field-level granularity: store critical vs. non-critical data separately
+
+**Comparison across storage/encryption approaches:**
+
+| Aspect | Plaintext Storage | AES-CBC (Unauthenticated) | AES-GCM (Authenticated) |
+|--------|------------------|--------------------------|------------------------|
+| **Partial corruption** | May lose only affected bytes | Partial recovery possible | Entire field lost (returns encrypted data) |
+| **Entity accessibility** | Entity accessible | Entity accessible | Entity accessible, only affected field lost |
+| **Detection** | Manual inspection required | Not detected (silent corruption) | Automatic (authentication failure, logged) |
+| **Recovery** | Partial recovery possible | Partial (but corrupted) | No recovery without backup |
+| **Tampering protection** | None | None (vulnerable to bit-flipping attacks) | Cryptographically guaranteed |
+| **Security** | ❌ No confidentiality | ⚠️ Confidentiality without integrity | ✅ Confidentiality + Integrity |
+| **Industry recommendation** | ❌ Not acceptable for sensitive data | ❌ Deprecated (insecure) | ✅ Best practice |
+
+**Why Encryptable (and the industry) uses AES-GCM:**
+- ✅ Detects tampering and corruption (security feature)
+- ✅ Prevents bit-flipping attacks
+- ✅ Industry standard (NIST recommended)
+- ✅ Hardware accelerated on modern CPUs
+- ⚠️ Requires reliable storage infrastructure (acceptable trade-off)
+
+**Trade-off:**
+This limitation is the **cost of cryptographic integrity**, and it's a trade-off that **every system using authenticated encryption must accept**.\
+The same property that makes tampering impossible also makes partial recovery impossible.\
+This is why **unauthenticated modes (like AES-CBC without HMAC) are considered insecure**: they don't detect tampering, but they also allow partial recovery from corruption.
+
+**Industry best practice** is to use authenticated encryption (AES-GCM, ChaCha20-Poly1305) despite the all-or-nothing property, because the security benefits far outweigh the corruption risk.\
+Organizations using **any** authenticated encryption system (not just Encryptable) must ensure reliable storage and comprehensive backups.
+
+**Recommendations:**
+- ✅ **Essential:** Implement robust backup and restore procedures
+- ✅ **Essential:** Use reliable storage infrastructure with error correction
+- ✅ **Recommended:** Deploy MongoDB replica sets for redundancy
+- ✅ **Recommended:** Monitor storage health proactively
+- ⚠️ **Consider:** For ultra-critical data, evaluate if the all-or-nothing risk is acceptable for your use case
+
+**Bottom line:** AES-GCM's all-or-nothing property means corrupted fields are unrecoverable, but Encryptable's silent failure approach prevents cascading failures.\
+The entity remains accessible with other fields intact, providing **graceful degradation** rather than complete data loss.
+
+**This is NOT an Encryptable-specific limitation**—it's a fundamental property of authenticated encryption that affects every system using AES-GCM (AWS, Google Cloud KMS, Azure Key Vault, HashiCorp Vault, Signal, WhatsApp, etc.).\
+The industry has collectively accepted this trade-off because the **security benefits** (tamper detection, integrity protection) far outweigh the corruption risks when combined with proper infrastructure.
+
+With proper infrastructure (reliable storage + regular backups + log monitoring), the risk is manageable and **the same as any other AES-GCM system**.\
+Organizations concerned about this should evaluate their storage reliability regardless of which encryption solution they choose.
 
 ---
 
