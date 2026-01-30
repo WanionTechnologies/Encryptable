@@ -154,9 +154,21 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 **6 tests** verifying cryptographic properties (no DB required).
 
+### 12. **EncryptablePolymorphicTest.kt** - Polymorphic Inner Entities (v1.0.7)
+
+- ✅ Save and retrieve order with credit card payment polymorphically
+- ✅ Save and retrieve order with PIX payment polymorphically
+- ✅ Save and retrieve order with bank transfer payment polymorphically
+- ✅ Update polymorphic payment from one type to another
+- ✅ Handle null polymorphic field
+- ✅ Lazy load polymorphic field correctly
+- ✅ Batch operations with different polymorphic types
+
+**7 tests** covering polymorphic nested entities without type annotations.
+
 ## Total Coverage
 
-- **74 test cases** across 12 test files
+- **81 test cases** across 13 test files
 - All major framework features tested
 - Edge cases and error scenarios covered
 - Integration tests for complex workflows
@@ -174,6 +186,7 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 ```bash
 ./gradlew test --tests EncryptableBasicTest
 ./gradlew test --tests EncryptableGridFSTest
+./gradlew test --tests EncryptablePolymorphicTest
 ./gradlew test --tests CryptoPropertiesTest
 ```
 
@@ -200,6 +213,11 @@ All test entities use the `test_*` collection naming convention to avoid conflic
 - `test_documents`
 - `test_items`
 - `test_containers`
+- `test_orders`
+- `test_payments`
+- `test_credit_card_payments`
+- `test_pix_payments`
+- `test_bank_transfer_payments`
 - etc.
 
 ## Test Patterns

@@ -79,7 +79,6 @@ class EncryptableIDStrategyTest : BaseEncryptableTest() {
     fun `Direct ID strategy should use secret as CID`() {
         // Given - secret must be 22 characters Base64 to form valid CID
         val cidString = generateCIDString()
-        println("Generated cidString: '$cidString' (length: ${cidString.length})")
 
         // When
         val entity = TestDirectIDEntity().withSecret(cidString).apply {

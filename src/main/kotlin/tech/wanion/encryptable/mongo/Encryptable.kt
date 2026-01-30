@@ -161,10 +161,6 @@ abstract class Encryptable<T: Encryptable<T>> {
          *
          * Returns the secret used for encryption operations.
          *
-         * **Behavior varies by ID strategy:**
-         * - **@HKDFId entities:** Returns the entity's own secret (set via `withSecret()`)
-         * - **@Id entities:** Returns the master secret (shared across all @Id entities)
-         *
          * **Use cases:**
          * - Internal framework operations (rotation, relationship management)
          * - Advanced integrations requiring encryption key access
@@ -214,6 +210,27 @@ abstract class Encryptable<T: Encryptable<T>> {
          * @see getSecretOf For getting the encryption secret (returns master secret for @Id entities)
          */
         fun getUnsafeSecretOf(encryptable: Encryptable<*>): String? = encryptable.secret
+
+        /**
+         * # hasErrored
+         *
+         * Checks if an error occurred during processing of the given Encryptable entity.
+         *
+         * @param encryptable The Encryptable entity instance to check.
+         * @return True if an error occurred, false otherwise.
+         */
+        fun hasErrored(encryptable: Encryptable<*>): Boolean = encryptable.errored
+
+        /**
+         * # setErrored
+         *
+         * Marks the given Encryptable entity as having encountered an error during processing.
+         *
+         * @param encryptable The Encryptable entity instance to mark as errored.
+         */
+        fun setErrored(encryptable: Encryptable<*>) {
+            encryptable.errored = true
+        }
     }
 
     /**
@@ -297,6 +314,14 @@ abstract class Encryptable<T: Encryptable<T>> {
     private var encryptableFieldMap: MutableMap<String, String> = ConcurrentHashMap()
 
     /**
+     * encryptableFieldTypeMap
+     *
+     * A map of field names for fields of type Encryptable to their corresponding actual class types.
+     * Used to manage nested Encryptable objects with polymorphic types within this entity.
+     */
+    private var encryptableFieldTypeMap: MutableMap<String, String> = ConcurrentHashMap()
+
+    /**
      * encryptableListFieldMap
      *
      * A map of field names for fields of type List<Encryptable> to their corresponding list of secret values.
@@ -330,6 +355,16 @@ abstract class Encryptable<T: Encryptable<T>> {
     val metadata = getMetadataFor(this::class.java)
 
     /**
+     * # errored
+     *
+     * Indicates whether an error occurred during processing.
+     *
+     * Used internally to track error states.
+     */
+    @Transient
+    private var errored: Boolean = false
+
+    /**
      * # init
      *
      * Initialization block - Registers this entity for conditional cleanup.
@@ -346,7 +381,8 @@ abstract class Encryptable<T: Encryptable<T>> {
      * (GridFS files, child entities, etc.) if they're ultimately not needed.
      */
     init {
-        (metadata.repository as EncryptableMongoRepository<T>).markForCleanup(this as T)
+        if (isNew())
+            (metadata.repository as EncryptableMongoRepository<T>).markForCleanup(this as T)
     }
 
     /**
@@ -415,6 +451,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      */
     private fun integrityCheckAndCleanUp(): Map<Class<out Encryptable<*>>, Set<String>> {
         // First, migrate any legacy references to ID-only storage
+        // this will be kept up to version 1.0.7.
         migrateReferencesToIdOnly()
         // Next, perform the integrity check
         val missingByType = integrityCheck()
@@ -430,6 +467,8 @@ abstract class Encryptable<T: Encryptable<T>> {
      * **Context**: In versions prior to 1.0.4, @Id entities may have stored the full secret map
      * when referencing @HKDFId entities. This creates a security risk: if the master secret is
      * compromised, the secrets of @HKDFId entities could be exposed.
+     *
+     * **Warning:** This migration will be kept up to version 1.0.7.
      *
      * **What it does**:
      * - Scans encryptableFieldMap and encryptableListFieldMap for @HKDFId entity references
@@ -448,8 +487,9 @@ abstract class Encryptable<T: Encryptable<T>> {
         encryptableFieldMap.entries.forEach { (fieldName, secret) ->
             if (secret.length == 22) return@forEach // Likely an @Id reference, skip check
             val field = metadata.encryptableFields[fieldName] ?: return@forEach
-            val type = field.type as Class<out Encryptable<*>>
-            val id = getMetadataFor(type).strategies.getIDFromSecret(secret, type)
+            val storedType = encryptableFieldTypeMap[fieldName]
+            val type = storedType?.asClass() ?: field.type
+            val id = getMetadataFor(type as Class<out Encryptable<*>>).strategies.getIDFromSecret(secret, type)
             field.set(this, id.toString())
         }
         // Check lists
@@ -489,8 +529,9 @@ abstract class Encryptable<T: Encryptable<T>> {
         // Group secrets from encryptableFieldMap
         encryptableFieldMap.entries.forEach { (fieldName, secret) ->
             val field = metadata.encryptableFields[fieldName] ?: return@forEach
-            val type = field.type as Class<out Encryptable<*>>
-            secretsByType.computeIfAbsent(type) { Collections.synchronizedSet(mutableSetOf()) }.add(secret)
+            val storedType = encryptableFieldTypeMap[fieldName]
+            val type = storedType?.asClass() ?: field.type
+            secretsByType.computeIfAbsent(type as Class<out Encryptable<*>>) { Collections.synchronizedSet(mutableSetOf()) }.add(secret)
         }
         // Group secrets from encryptableListFieldMap
         encryptableListFieldMap.entries.forEach { (fieldName, secretList) ->
@@ -527,9 +568,10 @@ abstract class Encryptable<T: Encryptable<T>> {
         // Remove from encryptableFieldMap using type-specific sets
         encryptableFieldMap.entries.forEach { entry ->
             val field = metadata.encryptableFields[entry.key] ?: return@forEach
-            val type = field.type as Class<out Encryptable<*>>
+            val storedType = encryptableFieldTypeMap[entry.key]
+            val type = storedType?.asClass() ?: field.type
             val missingSet = missingByType[type] ?: return@forEach
-            val typeMetadata = getMetadataFor(type)
+            val typeMetadata = getMetadataFor(type as Class<out Encryptable<*>>)
             if (missingSet.contains(entry.value)) {
                 val cidStr = typeMetadata.strategies.getIDFromSecret(entry.value, type).toString()
                 removedCidsByType.computeIfAbsent(type) { Collections.synchronizedSet(mutableSetOf()) }.add(cidStr)
@@ -605,11 +647,31 @@ abstract class Encryptable<T: Encryptable<T>> {
      * ```
      */
     private fun processFields(isWrite: Boolean = false) {
-        // Skip processing if not encryptable
+        // Process Encryptable fields
+        // this MUST be done before processing normal `encryptableFieldMap` en/decryption fields,
+        metadata.encryptableFields.entries.forEach { (fieldName, field) ->
+            val innerEncryptable = this.getField<Encryptable<*>?>(fieldName)
+            // Ensures that inner Encryptable objects added during construction are registered in the map; without this, they would not be persisted.
+            if (innerEncryptable != null && !encryptableFieldMap.contains(fieldName)) {
+                encryptableFieldMap[fieldName] =
+                    if (this.metadata.isolated) innerEncryptable.secret
+                        ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its secret set.")
+                    else innerEncryptable.id?.toString()
+                        ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its id set.")
+                if (innerEncryptable.javaClass != field.type)
+                    encryptableFieldTypeMap[fieldName] = innerEncryptable.javaClass.name
+            }
+            // Clear all encryptable fields.
+            // they can't be saved as they exist on their own collection.
+            field.set(this, null)
+        }
+
+        // Skip remaining processing if not encryptable
         if (!metadata.encryptable)
             return
         val secret = metadata.strategies.secret(this) ?: throw IllegalStateException("the Secret can't be Null on encryption/decryption.")
 
+        // Process ByteArray fields (GridFS and non-GridFS)
         metadata.byteArrayFields.entries.forEach { (fieldName, field) ->
             val bytes = field.get(this) as? ByteArray ?: return@forEach
             val bigArray = bytes.size >= EncryptableConfig.gridFsThreshold
@@ -636,30 +698,11 @@ abstract class Encryptable<T: Encryptable<T>> {
                             val objectId = ObjectId(bytes)
                             // Store in map for session use.
                             gridFsFieldIdMap[fieldName] = objectId
-                        } else if (gridFsFieldIdMap.containsKey(fieldName)) {
-                            // ObjectId already in map, nothing to do
-                        } else {
+                        } else if (!gridFsFieldIdMap.containsKey(fieldName))
                             throw IllegalStateException("Field $fieldName is marked as GridFS but no ObjectId found in map")
-                        }
                     }
                 }
             }
-        }
-
-        // Process Encryptable fields.
-        metadata.encryptableFields.entries.forEach { (fieldName, field) ->
-            val innerEncryptable = this.getField<Encryptable<*>?>(fieldName)
-            // Ensures that inner Encryptable objects added during construction are registered in the map; without this, they would not be persisted.
-            if (innerEncryptable != null && !encryptableFieldMap.contains(fieldName)) {
-                encryptableFieldMap[fieldName] =
-                    if (this.metadata.isolated) innerEncryptable.secret
-                        ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its secret set.")
-                    else innerEncryptable.id?.toString()
-                        ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its id set.")
-            }
-            // Clear all encryptable fields.
-            // they can't be saved as they exist on their own collection.
-            field.set(this, null)
         }
 
         this.encryptableFieldMap.entries.forEach { entry ->
@@ -671,6 +714,7 @@ abstract class Encryptable<T: Encryptable<T>> {
                     AES256.decrypt(secret, this@Encryptable, value)
             )
         }
+
         this.encryptableListFieldMap.values.forEach { list ->
             list.smartReplaceAll {
                 if (isWrite)
@@ -798,7 +842,7 @@ abstract class Encryptable<T: Encryptable<T>> {
             val secret = this.secret ?: if (encryptField) return else String.EMPTY
             val bytes = if (encryptField) AES256.decrypt(secret, this::class.java, rawBytes) else rawBytes
             field.set(this, bytes)
-            if (!isNew())
+            if (!isNew() && !errored)
                 updateEntityInfo(fieldName to bytes.first4KBChecksum())
         } finally {
             inputStream?.close()
@@ -857,7 +901,9 @@ abstract class Encryptable<T: Encryptable<T>> {
         encryptableFieldMap.parallelForEach { (fieldName, secret) ->
             val field = metadata.encryptableFields[fieldName] ?: return@parallelForEach
             if (!field.isAnnotationPresent(PartOf::class.java)) return@parallelForEach
-            val repo = EncryptableContext.getRepositoryForEncryptableClass(field.type as Class<out Encryptable<*>>)
+            val storedType = encryptableFieldTypeMap[fieldName]
+            val actualType = storedType?.asClass() ?: field.type
+            val repo = EncryptableContext.getRepositoryForEncryptableClass(actualType as Class<out Encryptable<*>>)
             repo.deleteBySecret(secret)
         }
         // Delete all entities referenced in encryptableListFieldMap, only if field is annotated with @PartOf

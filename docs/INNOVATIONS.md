@@ -15,10 +15,11 @@ This document highlights the novel technical contributions that distinguish Encr
 2. **Deterministic Cryptography for Stateless, Transient-Knowledge Security** (New!)
 3. **Anonymous Data Model** (INNOVATION: No user identity, credentials, or metadata required on server)
 4. **ORM-Like Relationship Management for MongoDB (ODM)** (One-to-One, One-to-Many, Many-to-Many, Cascade Delete)
-5. **Capability URLs – Secure, Shareable, Transient-Knowledge Access** (Novel Application)
-6. **Automatic Field-Level Encryption with Per-User Isolation** (Unique Combination)
-7. **Intelligent Change Detection via Field Hashing** (Novel Approach)
-8. **Encrypted GridFS with Lazy Loading** (Unique Integration)
+5. **Transparent Polymorphism for Nested Entities** (Industry-First: Zero-Configuration Polymorphic Documents)
+6. **Capability URLs – Secure, Shareable, Transient-Knowledge Access** (Novel Application)
+7. **Automatic Field-Level Encryption with Per-User Isolation** (Unique Combination)
+8. **Intelligent Change Detection via Field Hashing** (Novel Approach)
+9. **Encrypted GridFS with Lazy Loading** (Unique Integration)
 
 ---
 
@@ -260,7 +261,73 @@ This innovation eliminates one of the main reasons to choose SQL over MongoDB, e
 
 ---
 
-## 🌐 Innovation #5: Capability URLs – Secure, Shareable, Transient-Knowledge Access
+## 🎭 Innovation #5: Transparent Polymorphism for Nested Entities
+
+### **What Makes This Unique**
+
+**Industry-First:** First ORM-like framework to support 100% transparent polymorphism for nested documents without any type annotations or configuration.
+
+Traditional ORMs require explicit type discriminators (`@Type`, `@JsonTypeInfo`, `@Inheritance`). Encryptable eliminates this—use abstract classes as field types, and the framework automatically preserves the concrete type.
+
+### **The Innovation**
+
+```kotlin
+// Abstract base class
+abstract class Payment<P : Payment<P>> : Encryptable<P>() {
+    abstract override var id: CID?
+    
+    @Encrypt var amount: Double? = null
+}
+
+class CreditCardPayment : Payment<CreditCardPayment>() {
+    @HKDFId
+    override var id: CID? = null
+    
+    @Encrypt var cardNumber: String? = null
+}
+
+// Order with polymorphic field
+class Order : Encryptable<Order>() {
+    @PartOf var payment: Payment<*>? = null  // 🎯 Polymorphic field!
+}
+
+// Usage - completely transparent
+order.payment = CreditCardPayment().apply { cardNumber = "4532..." }
+orderRepository.save(order)
+
+// Concrete type preserved after save/load
+val retrieved = orderRepository.findBySecretOrNull(secret)!!
+retrieved.payment is CreditCardPayment  // ✅ true!
+```
+
+### **How It Works**
+
+Uses internal `encryptableFieldTypeMap` to track concrete types, storing only when type differs from field declaration (minimal storage overhead).
+
+### **Key Features**
+
+- ✅ **Zero annotations** - No `@Type`, `@JsonTypeInfo`, or discriminator columns
+- ✅ **Type preservation** - Concrete type survives save/load cycle
+- ✅ **Lazy loading compatible** - Loads correct type automatically
+- ✅ **Runtime type changes** - Change payment type, old one auto-deleted via `@PartOf`
+- ✅ **Storage optimized** - Type stored only when polymorphic (zero overhead otherwise)
+- ✅ **Works with encryption** - All polymorphic fields can be `@Encrypt`
+
+### **Comparison with Existing Solutions**
+
+| Feature | Encryptable | Hibernate | Spring Data MongoDB | Mongoose |
+|---------|-------------|-----------|---------------------|----------|
+| **Polymorphic Nested Docs** | ✅ Yes | ❌ SQL only | ⚠️ Needs discriminator | ⚠️ Needs schema |
+| **Zero Configuration** | ✅ Yes | ❌ Needs `@Inheritance` | ❌ Needs `@TypeAlias` | ❌ Needs config |
+| **Type Preservation** | ✅ Automatic | ✅ Yes | ⚠️ Manual setup | ⚠️ Manual |
+| **Storage Overhead** | ✅ Minimal | ⚠️ Always stores | ⚠️ Always stores | ⚠️ Always stores |
+
+**Winner:** ✅ **Only Encryptable has 100% transparent polymorphism with zero configuration**
+
+
+---
+
+## 🌐 Innovation #6: Capability URLs – Secure, Shareable, Transient-Knowledge Access
 
 A powerful application of cryptographic addressing is the use of "capability URLs." In this model, the URL itself contains all the information required to access and decrypt a resource—typically, a high-entropy secret or token derived from user credentials or generated randomly.
 
@@ -288,7 +355,7 @@ A powerful application of cryptographic addressing is the use of "capability URL
 
 ---
 
-## 🔐 Innovation #6: Automatic Field-Level Encryption with Per-User Isolation
+## 🔐 Innovation #7: Automatic Field-Level Encryption with Per-User Isolation
 
 ### **What Makes This Unique**
 
@@ -371,7 +438,7 @@ val patient2 = PatientRecord().withSecret(secret2)  // Uses secret2 for encrypti
 
 ---
 
-## 📊 Innovation #7: Intelligent Change Detection via Field Hashing
+## 📊 Innovation #8: Intelligent Change Detection via Field Hashing
 
 ### **What Makes This Unique**
 
@@ -474,7 +541,7 @@ override fun hashCode(): Int {
 
 ---
 
-## 📦 Innovation #8: Encrypted GridFS with Lazy Loading
+## 📦 Innovation #9: Encrypted GridFS with Lazy Loading
 
 ### **What Makes This Unique**
 
@@ -575,26 +642,27 @@ val pdf = retrieved.pdfContent  // Automatically loaded and decrypted!
 
 ### **Industry-First Innovations**
 
-4. ✅ **Single-annotation encrypted GridFS with lazy loading**
-5. ✅ **Field-level hash-based change detection for encrypted data**
-6. ✅ **Unified key derivation architecture for MongoDB ORM**
-7. ✅ **Per-user cryptographic isolation without external KMS**
+4. ✅ **Transparent polymorphism for nested documents (zero configuration)**
+5. ✅ **Single-annotation encrypted GridFS with lazy loading**
+6. ✅ **Field-level hash-based change detection for encrypted data**
+7. ✅ **Unified key derivation architecture for MongoDB ORM**
+8. ✅ **Per-user cryptographic isolation without external KMS**
 
 ### **Best-in-Class Features**
 
-8. ✅ **Zero-configuration field-level encryption**
-9. ✅ **Automatic partial updates with change detection**
-10. ✅ **Parallel encryption processing**
-11. ✅ **Request-scoped resource management**
-12. ✅ **Aspect-based lazy loading for GridFS**
-13. ✅ **ORM-like relationship management with cascade delete** (New!)
+9. ✅ **Zero-configuration field-level encryption**
+10. ✅ **Automatic partial updates with change detection**
+11. ✅ **Parallel encryption processing**
+12. ✅ **Request-scoped resource management**
+13. ✅ **Aspect-based lazy loading for GridFS**
+14. ✅ **ORM-like relationship management with cascade delete**
 
 ---
 
 
 ## 🎓 Conclusion
 
-Encryptable introduces **eight major innovations** to the MongoDB persistence and encryption space, combining novel approaches with industry-first integrations.
+Encryptable introduces **nine major innovations** to the MongoDB persistence and encryption space, combining novel approaches with industry-first integrations.
 
 **Key Achievements:**
 
@@ -604,8 +672,9 @@ Encryptable introduces **eight major innovations** to the MongoDB persistence an
 4. ✅ **Zero storage overhead** for ID mappings
 5. ✅ **100% automatic** resource cleanup
 6. ✅ **ORM-like** relationship management with cascade delete
+7. ✅ **100% transparent polymorphism** without configuration
 
 ---
 
-**Last Updated:** 2025-11-07
-**Framework Version:** 1.0
+**Last Updated:** 2026-01-30
+**Framework Version:** 1.0.7

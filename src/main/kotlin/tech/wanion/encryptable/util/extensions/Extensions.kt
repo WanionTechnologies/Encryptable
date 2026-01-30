@@ -16,27 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
-import kotlin.reflect.full.functions
-import kotlin.reflect.full.instanceParameter
 import tech.wanion.encryptable.EncryptableContext
-
-/**
- * Creates a copy of a data class instance using its generated copy() method.
- *
- * @param instance The data class instance to copy.
- * @return A new instance with the same property values as the original.
- * @throws IllegalArgumentException if the instance is not a data class.
- */
-inline fun <reified D: Any> copyDataInstance(instance: D): D {
-    val instanceKClass = instance::class
-    require(instanceKClass.isData) { "instance must be a data class" }
-
-    val copyFunction = instanceKClass.functions.single { function -> function.name == "copy" }
-
-    val copy = copyFunction.callBy(mapOf(copyFunction.instanceParameter!! to instance))
-
-    return copy as? D ?: error("copy didn't return a new instance")
-}
 
 /**
  * Converts a Boolean to its integer representation (true = 1, false = 0).
@@ -107,7 +87,7 @@ inline fun <reified T : Any> T.getGenericParameterClass(): Class<*>? {
         if (actualType is TypeVariable<*>) {
             val parameterizedType = actualType.bounds[0] as ParameterizedType
             val raw = parameterizedType.rawType
-            return if (raw is Class<*>) raw else null
+            return raw as? Class<*>
         }
     }
     return null
@@ -242,8 +222,7 @@ fun Field.typeParameter(index: Int = 0): Class<*> {
         if (index < 0 || index >= typeArgs.size) {
             throw IllegalArgumentException("Type parameter index $index out of bounds for field '${this.name}'.")
         }
-        val typeArg = typeArgs[index]
-        return when (typeArg) {
+        return when (val typeArg = typeArgs[index]) {
             is Class<*> -> typeArg
             is ParameterizedType -> typeArg.rawType as? Class<*> ?: throw IllegalArgumentException("Type parameter at index $index of field '${this.name}' is not a Class.")
             else -> throw IllegalArgumentException("Type parameter at index $index of field '${this.name}' could not be determined.")

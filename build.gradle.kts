@@ -20,9 +20,20 @@ plugins {
     id("org.jetbrains.dokka") version "1.9.20"
 }
 
-
 group = "tech.wanion"
-version = "1.0.6"
+version = "1.0.7"
+
+// Version variables from gradle.properties
+val kotlinVersion: String by project
+val springBootVersion: String by project
+val aspectjVersion: String by project
+val hkdfVersion: String by project
+
+// Extra properties for use in subprojects
+extra["kotlinVersion"] = kotlinVersion
+extra["springBootVersion"] = springBootVersion
+extra["aspectjVersion"] = aspectjVersion
+extra["hkdfVersion"] = hkdfVersion
 
 java {
 	toolchain {
@@ -35,20 +46,6 @@ repositories {
     mavenLocal()
 	mavenCentral()
 }
-
-// Version variables from gradle.properties
-val kotlinVersion: String by project
-val springBootVersion: String by project
-val springAspectsVersion: String by project
-val aspectjVersion: String by project
-val hkdfVersion: String by project
-
-// Extra properties for use in subprojects
-extra["kotlinVersion"] = kotlinVersion
-extra["springBootVersion"] = springBootVersion
-extra["springAspectsVersion"] = springAspectsVersion
-extra["aspectjVersion"] = aspectjVersion
-extra["hkdfVersion"] = hkdfVersion
 
 dependencies {
     // Kotlin
@@ -63,7 +60,6 @@ dependencies {
     implementation("at.favre.lib:hkdf:$hkdfVersion")
 
     // AspectJ for AOP support
-    implementation("org.springframework:spring-aspects:$springAspectsVersion")
     implementation("org.aspectj:aspectjrt:$aspectjVersion")
     implementation("org.aspectj:aspectjweaver:$aspectjVersion")
 
@@ -116,6 +112,14 @@ tasks.jar {
     val none = ""
     archiveClassifier.convention(none) // Ensures no classifier, produces artifactId-version.jar
     from("README.md") { into(none) } // Include README.md at the root of the JAR
+    // Add standard manifest attributes
+    manifest {
+        attributes(
+            "Implementation-Title" to project.name,
+            "Implementation-Version" to project.version,
+            "Implementation-Vendor" to "Wanion Technologies"
+        )
+    }
 }
 
 defaultTasks("build")

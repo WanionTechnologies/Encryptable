@@ -51,7 +51,6 @@ publishing {
 
                     val kotlinVersion = rootProject.extra["kotlinVersion"] as String
                     val springBootVersion = rootProject.extra["springBootVersion"] as String
-                    val springAspectsVersion = rootProject.extra["springAspectsVersion"] as String
                     val aspectjVersion = rootProject.extra["aspectjVersion"] as String
                     val hkdfVersion = rootProject.extra["hkdfVersion"] as String
 

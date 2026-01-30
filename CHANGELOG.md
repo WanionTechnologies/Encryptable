@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.4** (2026-01-07) - Master Secret Support for @Id Entities
 - **1.0.5** (2026-01-18) - Security: Remove Cross-Reference Leak Vectors
 - **1.0.6** (2026-01-24) - Performance: Code Optimizations & Bulk Updates
+- **1.0.7** (2026-02-??) - Polymorphic Relationships Support
 
 ---
 ## [1.0.0] - 2025-12-12 (Initial Release)
@@ -247,6 +248,15 @@ class MyEntity : Encryptable<MyEntity>() {
 - **Updated Spring Boot** - Upgraded from 4.0.0 to 4.0.2
 
 **Note:** This is a performance-focused release with no breaking changes or API modifications.
+
+---
+
+## [1.0.7] - 2026-01-30
+
+### Polymorphic Relationships Support
+
+Added support for polymorphic relationships between entities, allowing a single field to reference multiple entity types.  
+Without annotations or configurations, the framework can automatically handle polymorphic associations.
 
 --- 
 

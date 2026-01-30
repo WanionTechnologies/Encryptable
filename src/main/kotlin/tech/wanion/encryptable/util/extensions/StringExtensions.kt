@@ -42,6 +42,15 @@ fun String.Companion.randomSecret(byteLength: Int = 32): String {
 }
 
 /**
+ * Converts the string representing a fully qualified class name into a Class object.
+ *
+ * @receiver The fully qualified class name as a string.
+ * @return The corresponding Class object.
+ * @throws ClassNotFoundException if the class cannot be found.
+ */
+fun String.asClass() : Class<*> = Class.forName(this)
+
+/**
  * Generates a random hexadecimal string of the specified length.
  *
  * @param length The length of the hex string to generate. Default is 24.

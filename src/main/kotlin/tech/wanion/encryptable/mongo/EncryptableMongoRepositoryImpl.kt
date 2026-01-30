@@ -415,7 +415,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             logger.info(
                 "Secret rotation completed successfully. " +
                 "EntityType: ${typeClass.simpleName}, " +
-                "EntityID: $entityId, " +
+                "New EntityID: ${encryptable.id}, " +
                 "IP: $ip, " +
                 "Duration: ${duration}ms, "
             )
@@ -632,7 +632,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         // Determine CID from secret
         val id = resolveCid(secret, secretAsId)
 
-        val entityInfoMap = getEntityInfoMap()
         val query = Query(Criteria.where(entityInformation.idAttribute).`is`(id))
         getReadPreference().ifPresent { readPreference: ReadPreference? ->
             query.withReadPreference(readPreference!!)
@@ -641,13 +640,15 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         if (entityOpt.isPresent) {
             // If secretAsId is true and the secret is a valid CID and the entity is NOT an @Id entity.
             // return it without restoring as it was looked up by its ID directly.
-            if (secretAsId && secret == id.toString() && metadata.strategies != Encryptable.Metadata.Strategies.ID)
+            if (secretAsId && secret == id.toString() && metadata.isolated)
                 return entityOpt
             val entity = entityOpt.get()
             // Decrypt entity using the provided secret
             restoreMethod.invoke(entity, secret)
             // Track initial hashes and register entity for later change detection;
-            entityInfoMap[id] = EntityInfo(entity, entity.hashCodes())
+            // Only if no errors have occurred (as it potentially could cause entity corruption).
+            if (!Encryptable.hasErrored(entity))
+                addEntityInfo(entity)
             // Check and clean up any broken reference.
             if (EncryptableConfig.integrityCheck)
                 integrityCheck(entity)
@@ -703,11 +704,13 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
                 val id = entity.id as CID
                 // If secretsAsIds is true and the original secret is a valid CID and the entity is NOT an @Id entity.
                 // do not restore it as it was looked up by its ID directly.
-                if (secretsAsIds && cidToOriginalSecret[id] == id.toString() && metadata.strategies != Encryptable.Metadata.Strategies.ID)
+                if (secretsAsIds && cidToOriginalSecret[id] == id.toString() && metadata.isolated)
                     return@forEach
                 restoreMethod.invoke(entity, cidToSecretMap[id])
                 // Track initial hashes and register entity for later change detection; touch() may update audit fields
-                entityInfoMap[id] = EntityInfo(entity, entity.hashCodes())
+                // Only if no errors have occurred (as it potentially could cause entity corruption).
+                if (!Encryptable.hasErrored(entity))
+                    addEntityInfo(entity, entityInfoMap)
                 // Check and clean up any broken reference.
                 if (EncryptableConfig.integrityCheck)
                     integrityCheck(entity)
@@ -762,6 +765,24 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     }
 
     /**
+     * # addEntityInfo
+     *
+     * Adds the entity info tracking for the given entity.
+     * Should be called when an entity is loaded via findBySecret(secret) to start tracking its state.
+     *
+     * **Note:** This method is private because `EntityInfo` entries should only be created when an entity is loaded via `findBySecret(secret)`.
+     * This is important because only entities with **secret** can en/decrypt.
+     *
+     * ## Parameters
+     * - `entity`: The entity instance to track.
+     * - `entityInfoMap`: Optional map to add the entity info to (defaults to the thread-local map).
+     */
+    private fun addEntityInfo(entity: T, entityInfoMap:  MutableMap<CID, EntityInfo<T>> = getEntityInfoMap()) {
+        val id = entity.id ?: throw IllegalArgumentException("Entity must have a CID set to add secret info.")
+        entityInfoMap[id] = EntityInfo(entity, entity.hashCodes())
+    }
+
+    /**
      * # updateEntityInfo
      *
      * Updates the tracked hashCode for a specific field of an entity.
@@ -785,7 +806,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         // the entity via findBySecret(secret) before calling updateEntityInfo.
         if (entityInfo.entity != entity)
             throw IllegalArgumentException("The provided entity does not match the tracked entity for CID $cid. Ensure the same instance is used.")
-        entityInfo.initialHashCode[newFieldHash.first] = newFieldHash.second
+        entityInfo.initialHashCodes[newFieldHash.first] = newFieldHash.second
     }
 
     /**
@@ -880,26 +901,26 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * Finally, it clears the thread-local maps to prevent memory leaks.
      */
     override fun flushThenClear() {
-        val entityInfoMap = getEntityInfoMap().values
+        val entityInfoMap = getEntityInfoMap()
         val newEntities = getNewEntityList()
 
         // Collect entities with changes for bulk update
         // Chunked for performance
-        entityInfoMap.chunked(5000).parallelForEach { batch ->
+        entityInfoMap.values.chunked(5000).parallelForEach { batch ->
             val bulkOps = mongoOperations.bulkOps(BulkOperations.BulkMode.UNORDERED, typeClass)
             var hasOperations = false
             batch.forEach {
                 val currentHashCodes = it.entity.hashCodes()
-                if (it.initialHashCode == currentHashCodes)
+                if (it.initialHashCodes == currentHashCodes)
                     return@forEach
                 val entity = it.entity
                 // Entity has changed, perform update
                 // We ignore exceptions to ensure all entities are processed.
                 try {
-                    update(entity, it.initialHashCode, currentHashCodes, bulkOps)
+                    updateEntity(entity, it.initialHashCodes, currentHashCodes, bulkOps)
                     hasOperations = true
                 } catch (e: Exception) {
-                    logger.error("Failed to perform update on: ${e.message}", e)
+                    logger.error("Failed to perform update on entity: ${entity.id}: ${e.message}", e)
                 }
             }
             if (!hasOperations)
@@ -911,6 +932,8 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             }
         }
 
+        // Cascade delete unsaved new entities
+        // parallelForEach to improve performance as it is I/O bound
         newEntities.parallelForEach { newEntity ->
             if (!newEntity.isNew()) return@parallelForEach
             // New entity was not saved, perform cascade delete to clean up resources
@@ -920,29 +943,21 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
                 logger.error("Failed to cascade delete unsaved new entity: ${e.message}", e)
             }
         }
-        entityInfoMap.clear()
-        newEntities.clear()
-        clearThreadLocals()
+
+        // Clear thread-local maps to prevent memory leaks
+        clearThreadLocals(entityInfoMap, newEntities)
     }
 
     /**
-     * # clearThreadLocals
+     * # updateEntity
      *
-     * Clears the thread-local maps used for tracking entity info and new entities.
-     * This helps prevent memory leaks by removing references to entities after processing is complete.
-     */
-    private fun clearThreadLocals() {
-        entityInfoMapThreadLocal.remove()
-        newEntitiesThreadLocal.remove()
-    }
-
-    /**
      * Updates only the changed fields of an existing entity in the database.
      *
      * This method:
      * - Checks if the entity is not new (already exists in the database).
      * - Compares the initial and current hash codes to determine which fields have changed.
      * - Invokes the entity's update logic via reflection.
+     * - Validates that the entity is not in an errored state after update preparation.
      * - Builds a MongoDB Update object for only the changed fields.
      * - Uses a BulkOperations instance to queue the update operation. updating only the modified fields.
      *
@@ -954,14 +969,22 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * @throws UnsupportedOperationException If the entity is new (not yet persisted).
      * @throws IllegalArgumentException If the entity is null.
      */
-    private fun <S : T> update(entity: S, initialHashCode: Map<String, Int>, hashCodes: Map<String, Int>, bulkOps: BulkOperations) {
+    private fun <S : T> updateEntity(entity: S, initialHashCode: Map<String, Int>, hashCodes: Map<String, Int>, bulkOps: BulkOperations) {
         Assert.notNull(entity, "Entity must not be null")
         if (entityInformation.isNew(entity))
             throw UnsupportedOperationException("This method should only be called to update an already existing entity, to insert a new entity, use .save(entity).")
-        val changedFields = compareChangedFields(initialHashCode, hashCodes)
+        val changedFields = filterChangedFields(initialHashCode, hashCodes)
         if (changedFields.isEmpty()) return
-        // invoke update method, e.g. re-encrypt fields
+        // Check if entity is not in errored state before update.
+        if (Encryptable.hasErrored(entity))
+            throw IllegalStateException("Entity ${entity.id} already is an errored state before update.")
+        // invoke update method, e.g. re-encrypt all @Encrypt fields
+        // if entity.secret is null, it will throw an exception, which is the desired behavior.
+        // TODO: re-encrypt only changed fields?
         updateMethod.invoke(entity)
+        // Double check entity is not in errored state after update (re-encryption).
+        if (Encryptable.hasErrored(entity))
+            throw IllegalStateException("Entity ${entity.id} is in errored state after update preparation.")
         val query = Query(Criteria.where("_id").`is`(entity.id))
         val update = Update()
         for ((field, _) in changedFields) {
@@ -972,12 +995,18 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     }
 
     /**
-     * Compares two hash maps and returns a map of changed fields.
-     * @param initialHashCode The initial hash codes of fields.
-     * @param hashCodes The current hash codes of fields.
-     * @return Map of field names to a Pair of (oldHash, newHash) for changed fields.
+     * # filterChangedFields
+     *
+     * Compares the initial and current hash codes of an entity's fields to identify which fields have changed.
+     *
+     * ## Parameters
+     * - `initialHashCode`: Map of field names to their initial hash codes.
+     * - `hashCodes`: Map of field names to their current hash codes.
+     *
+     * ## Returns
+     * - Map of field names to a Pair of (oldHashCode, newHashCode) for fields that have changed.
      */
-    private fun compareChangedFields(initialHashCode: Map<String, Int>, hashCodes: Map<String, Int>): Map<String, Pair<Int, Int>> {
+    private fun filterChangedFields(initialHashCode: Map<String, Int>, hashCodes: Map<String, Int>): Map<String, Pair<Int, Int>> {
         val changed = mutableMapOf<String, Pair<Int, Int>>()
         for ((key, oldHash) in initialHashCode) {
             val newHash = hashCodes[key]
@@ -987,6 +1016,36 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         }
         return changed
     }
+
+    /**
+     * # clearThreadLocals
+     *
+     * Clears the provided entity info map and new entities list, and removes their thread-local references.
+     *
+     * ## Parameters
+     * - `entityInfoMap`: The mutable map of entity info to clear.
+     * - `newEntities`: The mutable list of new entities to clear.
+     */
+    private fun clearThreadLocals(entityInfoMap: MutableMap<CID, EntityInfo<T>>, newEntities:  MutableList<T>) {
+        entityInfoMap.clear()
+        newEntities.clear()
+        entityInfoMapThreadLocal.remove()
+        newEntitiesThreadLocal.remove()
+    }
+
+    /**
+     * # EntityInfo
+     *
+     * Data class to hold an entity and its initial hash codes for change tracking.
+     *
+     * ## Properties
+     * - `entity`: The Encryptable entity instance.
+     * - `initialHashCodes`: Map of field names to their initial hash codes.
+     */
+    private data class EntityInfo<T : Encryptable<T>>(
+        val entity: T,
+        val initialHashCodes: MutableMap<String, Int>
+    )
 
     // ==================== NOT IMPLEMENTED METHODS ====================
     // The following methods are intentionally not implemented to enforce
@@ -1276,18 +1335,4 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * - `NotImplementedError` always.
      */
     override fun deleteAll(entities: Iterable<T>) = throw NotImplementedError("deleteAll(entities: Iterable<T>) is intentionally not implemented.")
-
-    /**
-     * # EntityInfo
-     *
-     * Wrapper for entity and its initial hashCode.
-     *
-     * ## Properties
-     * - `entity`: The Encryptable entity instance.
-     * - `initialHashCode`: The hash code of the entity at the time it was loaded/tracked.
-     */
-    private data class EntityInfo<T : Encryptable<T>>(
-        val entity: T,
-        val initialHashCode: MutableMap<String, Int>
-    )
 }

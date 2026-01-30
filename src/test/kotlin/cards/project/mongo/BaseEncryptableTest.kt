@@ -5,7 +5,7 @@ import org.springframework.test.context.TestPropertySource
 import tech.wanion.encryptable.util.extensions.randomSecret
 
 /**
- * Base test class for all Encryptable framework tests.
+ * Base test class for all Encryptable Framework tests.
  *
  * `projectcards` was the code name during early development and has been retained as the legacy database name.
  *

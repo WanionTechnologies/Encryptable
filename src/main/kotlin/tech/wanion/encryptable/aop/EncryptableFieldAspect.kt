@@ -10,6 +10,7 @@ import tech.wanion.encryptable.EncryptableContext
 import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.mongo.EncryptableMongoRepository
 import tech.wanion.encryptable.mongo.PartOf
+import tech.wanion.encryptable.util.extensions.asClass
 import tech.wanion.encryptable.util.extensions.getField
 import java.lang.reflect.Field
 
@@ -48,12 +49,21 @@ class EncryptableFieldAspect {
         val currentValue = field.get(targetEncryptable)
         if (currentValue == null) {
             val encryptableFieldMap = targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldMap")
-            val secret = encryptableFieldMap[fieldName]
-            if (secret != null) {
-                val repository = EncryptableContext.getRepositoryForEncryptableClass(field.type as Class<out Encryptable<*>>)
-                val entity = repository.findBySecretOrNull(secret, true)
-                field.set(targetEncryptable, entity)
-            }
+            val secret = encryptableFieldMap[fieldName] ?: return // No secret, nothing to load.
+
+            val encryptableFieldTypeMap =
+                targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldTypeMap")
+            val storedType = encryptableFieldTypeMap[fieldName]
+            val actualType = if (storedType != null)
+                storedType.asClass() as Class<out Encryptable<*>>
+            else
+                field.type as Class<out Encryptable<*>>
+            encryptableFieldTypeMap[fieldName] ?: field.type as Class<out Encryptable<*>>
+
+            // Load the entity from the repository
+            val repository = EncryptableContext.getRepositoryForEncryptableClass(actualType)
+            val entity = repository.findBySecretOrNull(secret, true)
+            field.set(targetEncryptable, entity)
         }
     }
 
@@ -82,15 +92,23 @@ class EncryptableFieldAspect {
 
         val targetEncryptable = joinPoint.target as? Encryptable<*> ?: return joinPoint.proceed()
         val field = targetEncryptable.metadata.encryptableFields[fieldName] ?: return joinPoint.proceed()
+        val fieldType = field.type
 
         val encryptableFieldMap = targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldMap")
+        val encryptableFieldTypeMap = targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldTypeMap")
 
         var oldEntity = field.get(targetEncryptable) as Encryptable<*>? // Current value before setting new one
 
         // If oldEntity is null, try to fetch it using the secret from the map.
         if (oldEntity == null && encryptableFieldMap.contains(fieldName)) {
             val secret = encryptableFieldMap[fieldName] ?: throw IllegalStateException("Secret missing for field $fieldName")
-            val repository = EncryptableContext.getRepositoryForEncryptableClass(field.type as Class<out Encryptable<*>>)
+            val storedType = encryptableFieldTypeMap[fieldName]
+            val actualType = if (storedType != null)
+                storedType.asClass() as Class<out Encryptable<*>>
+            else
+                fieldType as Class<out Encryptable<*>>
+
+            val repository = EncryptableContext.getRepositoryForEncryptableClass(actualType)
             oldEntity = repository.findBySecretOrNull(secret, true)
         }
         val newEntity = joinPoint.args[0] as Encryptable<*>? // New value being set
@@ -115,10 +133,18 @@ class EncryptableFieldAspect {
                         ?: throw IllegalStateException("New entity must have a secret after save.")
                     else newEntity.id?.toString()
                         ?: throw IllegalStateException("New entity must have an ID after save.")
+                if (newEntity.javaClass != fieldType) {
+                    // Store the actual type for future reference
+                    encryptableFieldTypeMap[fieldName] = newEntity.javaClass.name
+                }
                 return joinPoint.proceed()
             }
             // if old entity is not null
             else -> {
+                // Remove the reference to the old entity and update the secret map
+                encryptableFieldMap.remove(fieldName)
+                // Also remove the type mapping
+                encryptableFieldTypeMap.remove(fieldName)
                 if (newEntity == null) {
                     // New entity is null while old entity is not null
                     // if part-of, delete the old entity.
@@ -126,8 +152,6 @@ class EncryptableFieldAspect {
                         val repo = oldEntity.metadata.repository as EncryptableMongoRepository<Encryptable<Nothing>>
                         repo.deleteBySecret(Encryptable.getSecretOf(oldEntity))
                     }
-                    // Just remove the reference to the old entity and update the secret map
-                    encryptableFieldMap.remove(fieldName)
                     return joinPoint.proceed()
                 } else {
                     // Both old and new entities are not null
@@ -147,6 +171,9 @@ class EncryptableFieldAspect {
                             ?: throw IllegalStateException("New entity must have a secret after save.")
                         else newEntity.id?.toString()
                             ?: throw IllegalStateException("New entity must have an ID after save.")
+                    if (newEntity.javaClass != fieldType)
+                        // Store the actual type for future reference
+                        encryptableFieldTypeMap[fieldName] = newEntity.javaClass.name
                     return joinPoint.proceed()
                 }
             }

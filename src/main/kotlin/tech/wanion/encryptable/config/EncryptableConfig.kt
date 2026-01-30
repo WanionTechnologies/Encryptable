@@ -9,11 +9,25 @@ import tech.wanion.encryptable.util.extensions.getBean
  * Used to make certain values configurable at runtime.
  */
 object EncryptableConfig {
-    // Maximum number of threads for parallel operations
+    /**
+     * Thread limit for parallel encryption/decryption operations.
+     * Default is number of available processors multiplied by a configurable percentage.
+     * See `thread.limit.percentage` property.
+     */
     val threadLimit: Int
-    // GridFS storage threshold in bytes
+
+    /**
+     * GridFS threshold for storing data in GridFS vs regular document.
+     * Default is 1024 bytes.
+     * See `encryptable.gridfs.threshold` property.
+     */
     val gridFsThreshold: Int
-    // Flag to enable or disable integrity checks
+
+    /**
+     * Flag indicating whether integrity checks should be performed on Encryptable entities.
+     * Default is true.
+     * See `encryptable.integrity.check` property.
+     */
     val integrityCheck: Boolean
 
     init {

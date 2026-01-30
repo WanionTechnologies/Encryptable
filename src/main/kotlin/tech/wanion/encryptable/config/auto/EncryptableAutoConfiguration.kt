@@ -19,8 +19,7 @@ import tech.wanion.encryptable.util.extensions.zerify
 @AutoConfiguration
 @ConditionalOnClass(MongoTemplate::class, EncryptableMongoConfiguration::class)
 @Import(EncryptableMongoConfiguration::class, EncryptableBeans::class)
-class EncryptableAutoConfiguration(
-) : WebMvcConfigurer {
+class EncryptableAutoConfiguration : WebMvcConfigurer {
     /**
      * Application context for accessing beans and resources.
      * Injected by Spring.

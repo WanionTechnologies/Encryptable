@@ -1,53 +1,46 @@
 # Encryptable Framework
 
-Encryptable is an ORM-like, Transient Knowledge Data Management Framework for Spring Data MongoDB.
+Encryptable is an ORM-like Framework for Spring Data MongoDB.
 
-Enabling Direct Lookup `O(1)` of entities via Cryptographic Addressing.
+Traditional databases require you to manage usernames, lookup tables, and complex encryption.  
+Encryptable handles all of this automatically through simple annotations.  
+Write secure applications with minimal developer effort.
 
-Supporting AES-256-GCM field-level encryption, per-user cryptographic isolation, and intelligent relationship management.
+**What you get:**
+- **Instant data access** – No username lookups or mapping tables needed.
+- **Automatic encryption** – Add `@Encrypt` to any field and get AES-256-GCM encryption with per-user isolation.
+- **Smart polymorphism** – Use abstract types in your code, and the framework automatically preserves concrete types.
+- **Real relationships** – One-to-One, One-to-Many, Many-to-Many with cascade delete (optional).
+- **Automatic Change Detection & Efficient updates** – Only changed fields are sent to the database.
+- **Large file handling** – Store files up to 2GB without managing file I/O. Encryptable automatically handles large files (>1KB) using GridFS with encryption and lazy loading.
 
-> **Note:** Encryptable is not a strict zero-knowledge system. For a full explanation and apology, see [Not Zero-Knowledge](docs/NOT_ZERO_KNOWLEDGE.md).
+All features work through simple annotations.
+No boilerplate, no configuration files, no crypto expertise required.
 
----
+```kotlin
+@Document class User : Encryptable<User>() {
+    @HKDFId override var id: CID? = null           // Cryptographic addressing
+    @Encrypt var email: String? = null             // Automatic encryption
+    @PartOf var address: Address? = null           // Cascade delete
+    var payment: Payment<*>? = null                // Polymorphic—type preserved
+}
+```
 
-**Main Innovations:**
-- Cryptographic addressing (zero mapping tables)
-- ORM-like relationships in MongoDB
-- Transient Knowledge architecture (request-scoped knowledge)
-- Intelligent change detection
-- And more! Check [Innovations](docs/INNOVATIONS.md) for the full list.
+**Honest Security Model:** Request-scoped (transient knowledge). The server processes secrets during requests to encrypt/decrypt data—this is NOT zero-knowledge.   
+**Full transparency:** [Security Model](docs/NOT_ZERO_KNOWLEDGE.md) • [Limitations](docs/LIMITATIONS.md)
 
-See [AI Security Analysis](docs/AI_SECURITY_AUDIT.md) for detailed cryptographic review and [Limitations](docs/LIMITATIONS.md) for important technical constraints.
-
-For version history and release notes, see [Changelog](CHANGELOG.md).
-
----
-
-## 🛠️ Scope and Application-Level Features
-
-Encryptable is intentionally focused on providing secure, innovative data management and encryption for MongoDB—including cryptographic addressing, request-scoped (transient) knowledge security, field-level encryption, and ORM-like relationships.
-
-**What's included:**
-- ✅ Cryptographic addressing and CID generation
-- ✅ Field-level AES-256-GCM encryption
-- ✅ ORM-like relationships (One-to-One, One-to-Many, Many-to-Many)
-- ✅ Request-scoped secret management
-- ✅ Master secret support (from environment variables or KMS at startup)
-
-**What's left to the developer:**
-- Multi-tenancy architecture
-- Rate limiting and brute-force protection
-- KMS integration for fetching master secret (simple pattern documented)
-- Custom authentication flows
-- Application-level access controls
-
-> **Note on KMS:** Encryptable supports loading the master secret from KMS (AWS, Azure, GCP, Vault) at application startup. Per-entity KMS calls are not supported due to performance constraints. See [Limitations](docs/LIMITATIONS.md) for details.
-
-This design keeps Encryptable simple, flexible, and easy to integrate into a wide variety of projects.
+**Learn More:** [Technical Innovations](docs/INNOVATIONS.md) • [Security Audit](docs/AI_SECURITY_AUDIT.md) • [Changelog](CHANGELOG.md)
 
 ---
 
 ## ⚡ Quick Start
+
+### 📦 Installation
+
+For a full installation guide, see [Prerequisites](docs/PREREQUISITES.md).
+
+### 🛠️ Basic Usage
+
 ```kotlin
 @EnableEncryptable
 @SpringBootApplication
@@ -76,24 +69,6 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 
 ---
 
-## 📦 Installation
-
-### Gradle Kotlin DSL
-Add the Encryptable Starter dependency to your Gradle build:
-```kotlin
-dependencies {
-    implementation("tech.wanion:encryptable-starter:1.0.6")
-    aspect("tech.wanion:encryptable:1.0.6")
-}
-```
-
-**Important:** Do not add `spring-boot-starter-webmvc` or `spring-boot-starter-data-mongodb` to your project dependencies, as this may cause version conflicts or duplicate beans.\
-The starter already includes these dependencies in compatible versions.
-
-For all system and runtime requirements, see [Prerequisites](docs/PREREQUISITES.md).
-
----
-
 ## 🆘 Getting Help
 
 - **Have questions?** Check the [FAQ](docs/FAQ.md) for common questions and answers
@@ -117,7 +92,7 @@ For all system and runtime requirements, see [Prerequisites](docs/PREREQUISITES.
 ---
 
 ## ✅ Test Runtime
-Test Runtime	✅ 74 tests in 5s\
+Test Runtime	✅ 81 passing tests (100%) | 0 failing
 Detailed test overview [here](src/test/kotlin/cards/project/README.md).
 
 ---
@@ -155,9 +130,10 @@ If you find Encryptable useful, consider sponsoring the author to help fund main
 ---
 
 ## ⚖️ Responsible Use & Ethics
-Encryptable is designed to empower privacy, security, and data protection for all users.\
-However, as a privacy technology, it can be misused.\
-**The author and maintainers of Encryptable do not condone, support, or agree with any harmful, illegal, or unethical usage of this project.\
+
+Encryptable is designed to empower privacy, security, and data protection for all users.  
+However, as any privacy technology, it can be misused.  
+**The author and maintainers of Encryptable do not condone, support, or agree with any harmful, illegal, or unethical usage of this project.  
 Users are solely responsible for ensuring their usage of Encryptable complies with all applicable laws and ethical standards.**
 
 *This disclaimer is standard for all privacy technologies and does not imply any unique risk or concern with Encryptable specifically.*

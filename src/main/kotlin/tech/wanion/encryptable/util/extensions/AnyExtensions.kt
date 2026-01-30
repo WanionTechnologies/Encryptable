@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 fun markForWiping(vararg objects: Any) = EncryptableContext.markForWiping(objects)
 
-// Cache for fields to improve performance
+/** Cache to improve performance of `Any.getField(fieldName: String)`field access. */
 private val fieldCache = ConcurrentHashMap<Pair<Class<*>, String>, Field>()
 
 /**
@@ -24,7 +24,7 @@ private val fieldCache = ConcurrentHashMap<Pair<Class<*>, String>, Field>()
  */
 @Suppress("UNCHECKED_CAST")
 fun <R> Any.getField(fieldName: String): R {
-    var clazz: Class<*> = this::class.java
+    val clazz: Class<*> = this::class.java
     val key = Pair(clazz, fieldName)
     val field = fieldCache.computeIfAbsent(key) {
         var current: Class<*>? = clazz

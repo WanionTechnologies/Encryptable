@@ -59,12 +59,12 @@ To add the Encryptable Starter to your project, use:
 ```kotlin
 dependencies {
     // Encryptable Starter (includes all required dependencies)
-    implementation("tech.wanion:encryptable-starter:1.0.6")
-    
+    implementation("tech.wanion:encryptable-starter:1.0.7")
+  
     // Encryptable Aspects
-    aspect("tech.wanion:encryptable:1.0.6")
+    aspect("tech.wanion:encryptable:1.0.7")
     // Encryptable Aspects for Tests
-    testAspect("tech.wanion:encryptable:1.0.6")
+    testAspect("tech.wanion:encryptable:1.0.7")
 }
 ```
 
@@ -81,6 +81,7 @@ tasks.withType<Test> {
         "--add-opens", "java.base/javax.crypto.spec=ALL-UNNAMED",
         "--add-opens", "java.base/java.lang=ALL-UNNAMED",
       // Enable dynamic agent loading for Mockito
+      // This is to just to remove warnings during tests
       "-XX:+EnableDynamicAgentLoading"
     )
 }

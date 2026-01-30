@@ -101,7 +101,9 @@ class EncryptableList<T: Encryptable<T>>(
     init {
         val metadata = encryptable.metadata
         val field = metadata.encryptableListFields[fieldName] ?: throw IllegalArgumentException("Field '$fieldName' not found in ${encryptable::class.java.name}")
-        if (!List::class.java.isAssignableFrom(field.type)) throw IllegalArgumentException("Field '$fieldName' is not a List in ${encryptable::class.java.name}")
+        // Check that the field is of type List
+        if (!List::class.java.isAssignableFrom(field.type))
+            throw IllegalArgumentException("Field '$fieldName' is not a List in ${encryptable::class.java.name}")
         // Extract generic type parameter of the Field's List<T>
         val typeParameter = field.typeParameter()
         this.typeClass = (typeParameter as? Class<T>) ?: throw IllegalArgumentException("Generic type of List for field '$fieldName' is not a Encryptable class type")

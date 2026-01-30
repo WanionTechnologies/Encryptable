@@ -1,6 +1,7 @@
 package tech.wanion.encryptable.util
 
 import org.slf4j.LoggerFactory
+import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.util.AES256.GCM_IV_LENGTH
 import tech.wanion.encryptable.util.extensions.clear
 import tech.wanion.encryptable.util.extensions.decode64
@@ -167,6 +168,8 @@ object AES256 {
         } catch (e: Exception) {
             val src = sourceNameOf(source)
             logger.error("Encryption failed - Source: $src, DataSize: ${data.size} bytes, Error: ${e.javaClass.simpleName}")
+            if (source is Encryptable<*>)
+                Encryptable.setErrored(source)
             return ByteArray(0)
         } finally {
             aesKey.clear()
@@ -211,6 +214,8 @@ object AES256 {
         } catch (e: Exception) {
             val src = sourceNameOf(source)
             logger.error("Decryption failed - Source: $src, DataSize: ${data.size} bytes, Error: ${e.javaClass.simpleName}")
+            if (source is Encryptable<*>)
+                Encryptable.setErrored(source)
             return data
         } finally {
             aesKey.clear()
