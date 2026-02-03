@@ -31,6 +31,7 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 | [ORM_FEATURES.md](ORM_FEATURES.md)                                   | ORM-like features for MongoDB relationship management                 |
 | [POWER_OF_TOUCH.md](POWER_OF_TOUCH.md)                               | Practical guide to the touch method: audit, security, automation     |
 | [PREREQUISITES.md](PREREQUISITES.md)                                    | System & runtime requisites: JVM args, minimum Java version, dependencies, and setup |
+| [RESPONDING_TO_CRITICS.md](RESPONDING_TO_CRITICS.md)                 | Addressing common criticisms and misconceptions about Encryptable     |
 | [SECRET_ROTATION.md](SECRET_ROTATION.md)                             | Secret rotation process, compliance, and best practices               |
 | [SECURITY_WITHOUT_AUDIT.md](SECURITY_WITHOUT_AUDIT.md)               | Security analysis without formal audit considerations                 |
 | [SECURITY_WITHOUT_SECRET.md](SECURITY_WITHOUT_SECRET.md)             | Security architecture without persistent secrets                      |

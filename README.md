@@ -1,10 +1,6 @@
 # Encryptable Framework
 
-Encryptable is an ORM-like Framework for Spring Data MongoDB.
-
-Traditional databases require you to manage usernames, lookup tables, and complex encryption.  
-Encryptable handles all of this automatically through simple annotations.  
-Write secure applications with minimal developer effort.
+Encryptable is a security-first extension of Spring Data MongoDB that adds encryption, ORM-like features, and cryptographic addressing with minimal developer effort.
 
 **What you get:**
 - **Instant data access** – No username lookups or mapping tables needed.
@@ -14,22 +10,22 @@ Write secure applications with minimal developer effort.
 - **Automatic Change Detection & Efficient updates** – Only changed fields are sent to the database.
 - **Large file handling** – Store files up to 2GB without managing file I/O. Encryptable automatically handles large files (>1KB) using GridFS with encryption and lazy loading.
 
-All features work through simple annotations.
-No boilerplate, no configuration files, no crypto expertise required.
+All features work through simple annotations—no boilerplate, minimal configuration.
+No crypto expertise required.
 
 ```kotlin
 @Document class User : Encryptable<User>() {
-    @HKDFId override var id: CID? = null           // Cryptographic addressing
+    @HKDFId override var id: CID? = null           // Allows Cryptographic addressing
     @Encrypt var email: String? = null             // Automatic encryption
     @PartOf var address: Address? = null           // Cascade delete
     var payment: Payment<*>? = null                // Polymorphic—type preserved
 }
 ```
 
-**Honest Security Model:** Request-scoped (transient knowledge). The server processes secrets during requests to encrypt/decrypt data—this is NOT zero-knowledge.   
+**Honest Security Model:** Request-scoped (transient knowledge). The server processes secrets during requests to encrypt/decrypt data, this is **NOT** zero-knowledge.
 **Full transparency:** [Security Model](docs/NOT_ZERO_KNOWLEDGE.md) • [Limitations](docs/LIMITATIONS.md)
 
-**Learn More:** [Technical Innovations](docs/INNOVATIONS.md) • [Security Audit](docs/AI_SECURITY_AUDIT.md) • [Changelog](CHANGELOG.md)
+**Learn More:** [Technical Innovations](docs/INNOVATIONS.md) • [AI Security Audit](docs/AI_SECURITY_AUDIT.md) • [Changelog](CHANGELOG.md)
 
 ---
 
@@ -47,13 +43,13 @@ For a full installation guide, see [Prerequisites](docs/PREREQUISITES.md).
 class Application
 
 // All entities must extend Encryptable<T>
-class User : Encryptable<User>() {
+@Document class User : Encryptable<User>() {
     // HKDFId: derives CID from secret using HKDF
     @HKDFId override var id: CID? = null
     @Encrypt var email: String? = null
 }
 
-class Device : Encryptable<Device>() {
+@Document class Device : Encryptable<Device>() {
     // @Id: uses the 22-character Base64 URL-Safe String directly, making it a non-secret.
     @Id override var id: CID? = null
     // for entities with @Id, now you can use @Encrypt.
@@ -83,16 +79,15 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 
 ---
 
-
 ## 📖 Documentation
-- [Frequently Asked Questions (FAQ)](docs/FAQ.md)
+
 - [Project Documentation](docs/README.md)
 - [Usage Examples](examples/README.md)
 
 ---
 
 ## ✅ Test Runtime
-Test Runtime	✅ 81 passing tests (100%) | 0 failing
+Test Runtime	✅ 81 passing tests (100%) | 0 failing  
 Detailed test overview [here](src/test/kotlin/cards/project/README.md).
 
 ---

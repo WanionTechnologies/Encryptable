@@ -1,18 +1,10 @@
-# Transient Knowledge Security Model
-
-Encryptable uses a security model we called **Transient Knowledge**. This means that secrets (such as encryption keys) are only present in server memory for the duration of a request. Once the request completes, the secret is securely wiped and is no longer accessible to the server.
-
-This is different from the strict cryptographic definition of **Zero Knowledge**, where the server never has access to the secret at any point. In Encryptable, secrets are never persisted or stored beyond the request, but they are present in memory while the request is being processed. This approach minimizes the risk of secret exposure while enabling strong encryption and flexible application logic.
-
-> **Note:** We previously described Encryptable as "Zero Knowledge" because, outside the request scope, the server has no access to user data. However, for technical accuracy, we now use the term **Transient Knowledge** to reflect that secrets are held in memory only for the lifetime of a request.
-
----
-
 # Encryptable Test Suite
 
 > **Note:** `projectcards` was the code name for this framework during early development and is retained as the legacy database name and package for tests.
 
 Comprehensive test coverage for Encryptable MongoDB encryption framework.
+
+> **🤖 Transparency Note:** The tests in this suite were AI-generated (GitHub Copilot) to accelerate development and ensure comprehensive coverage. However, all tests have been reviewed, validated, and revised by WanionCane to ensure they accurately test the framework's behavior and cover real-world scenarios.
 
 ## Test Files
 

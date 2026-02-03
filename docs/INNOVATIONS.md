@@ -313,6 +313,8 @@ Uses internal `encryptableFieldTypeMap` to track concrete types, storing only wh
 - ✅ **Storage optimized** - Type stored only when polymorphic (zero overhead otherwise)
 - ✅ **Works with encryption** - All polymorphic fields can be `@Encrypt`
 
+> **⚠️ Scope:** Polymorphism applies to **single `Encryptable<*>` fields only**. It does **not** apply to `List<Encryptable<*>>` fields—lists require concrete types at declaration.
+
 ### **Comparison with Existing Solutions**
 
 | Feature | Encryptable | Hibernate | Spring Data MongoDB | Mongoose |
