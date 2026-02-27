@@ -20,12 +20,16 @@ class EncryptableLoggingDefaultsRunListener(app: SpringApplication, args: Array<
     override fun starting(bootstrapContext: ConfigurableBootstrapContext) {
         // Only set defaults if not already provided by the user
         setIfMissing("logging.pattern.console")
-        setIfMissing("logging.pattern.file")
+        setIfMissing("logging.pattern.file", false)
     }
 
-    private fun setIfMissing(key: String) {
+    private fun setIfMissing(key: String, highlight: Boolean = true) {
         if (System.getProperty(key).isNullOrEmpty() && System.getenv(key.replace('.', '_').uppercase()).isNullOrEmpty()) {
-            System.setProperty(key, "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} [%thread] %-5level %logger -- %msg%n")
+            val levelString = if (highlight) "%highlight(%-5.5level)" else "%-5.5level"
+            System.setProperty(
+                key,
+                "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} $levelString [%thread] %logger{0} -- %msg%n"
+            )
         }
     }
 }

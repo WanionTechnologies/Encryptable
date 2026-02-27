@@ -45,7 +45,7 @@ class EncryptableFieldAspect {
     fun beforeFieldGet(joinPoint: JoinPoint) {
         val fieldName = joinPoint.signature.name
         val targetEncryptable = joinPoint.target as? Encryptable<*> ?: return
-        val field = targetEncryptable.metadata.encryptableFields[fieldName] ?: return
+        val field = Encryptable.getMetadataFor(targetEncryptable).encryptableFields[fieldName] ?: return
         val currentValue = field.get(targetEncryptable)
         if (currentValue == null) {
             val encryptableFieldMap = targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldMap")
@@ -91,7 +91,7 @@ class EncryptableFieldAspect {
         if (thirdStack.methodName == INIT_METHOD_NAME) return joinPoint.proceed()
 
         val targetEncryptable = joinPoint.target as? Encryptable<*> ?: return joinPoint.proceed()
-        val field = targetEncryptable.metadata.encryptableFields[fieldName] ?: return joinPoint.proceed()
+        val field = Encryptable.getMetadataFor(targetEncryptable).encryptableFields[fieldName] ?: return joinPoint.proceed()
         val fieldType = field.type
 
         val encryptableFieldMap = targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldMap")
@@ -123,13 +123,13 @@ class EncryptableFieldAspect {
                 if (newEntity == null) return joinPoint.proceed() // Both null, nothing to do
                 // Old entity is null, new entity is not null
                 // Save the new entity
-                if (newEntity.isNew()) {
-                    val repo = newEntity.metadata.repository as EncryptableMongoRepository<Encryptable<Nothing>>
+                if (Encryptable.isNew(newEntity)) {
+                    val repo = Encryptable.getMetadataFor(newEntity).repository as EncryptableMongoRepository<Encryptable<Nothing>>
                     repo.save(newEntity as Encryptable<Nothing>)
                 }
                 // Update the secret map
                 encryptableFieldMap[fieldName] =
-                    if (newEntity.metadata.isolated) Encryptable.getUnsafeSecretOf(newEntity)
+                    if (Encryptable.getMetadataFor(newEntity).isolated) Encryptable.getUnsafeSecretOf(newEntity)
                         ?: throw IllegalStateException("New entity must have a secret after save.")
                     else newEntity.id?.toString()
                         ?: throw IllegalStateException("New entity must have an ID after save.")
@@ -149,7 +149,7 @@ class EncryptableFieldAspect {
                     // New entity is null while old entity is not null
                     // if part-of, delete the old entity.
                     if (isPartOf) {
-                        val repo = oldEntity.metadata.repository as EncryptableMongoRepository<Encryptable<Nothing>>
+                        val repo = Encryptable.getMetadataFor(oldEntity).repository as EncryptableMongoRepository<Encryptable<Nothing>>
                         repo.deleteBySecret(Encryptable.getSecretOf(oldEntity))
                     }
                     return joinPoint.proceed()
@@ -157,17 +157,17 @@ class EncryptableFieldAspect {
                     // Both old and new entities are not null
                     // if part-of, delete the old entity.
                     if (isPartOf) {
-                        val oldRepo = oldEntity.metadata.repository as EncryptableMongoRepository<Encryptable<Nothing>>
+                        val oldRepo = Encryptable.getMetadataFor(oldEntity).repository as EncryptableMongoRepository<Encryptable<Nothing>>
                         oldRepo.deleteBySecret(Encryptable.getSecretOf(oldEntity))
                     }
                     // Save the new entity and update the secret map
-                    if (newEntity.isNew()) {
-                        val repo = newEntity.metadata.repository as EncryptableMongoRepository<Encryptable<Nothing>>
+                    if (Encryptable.isNew(newEntity)) {
+                        val repo = Encryptable.getMetadataFor(newEntity).repository as EncryptableMongoRepository<Encryptable<Nothing>>
                         repo.save(newEntity as Encryptable<Nothing>)
                     }
                     // Update the secret map
                     encryptableFieldMap[fieldName] =
-                        if (newEntity.metadata.isolated) Encryptable.getUnsafeSecretOf(newEntity)
+                        if (Encryptable.getMetadataFor(newEntity).isolated) Encryptable.getUnsafeSecretOf(newEntity)
                             ?: throw IllegalStateException("New entity must have a secret after save.")
                         else newEntity.id?.toString()
                             ?: throw IllegalStateException("New entity must have an ID after save.")

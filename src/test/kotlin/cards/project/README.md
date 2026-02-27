@@ -36,19 +36,19 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 **5 tests** covering composition relationships and cascade behavior.
 
-### 3. **EncryptableGridFSTest.kt** - Large Binary Files
+### 3. **EncryptableStorageTest.kt** - Large Binary Files
 
 - ✅ Store small binaries in document (<1KB)
-- ✅ Store large binaries in GridFS (>1KB)
-- ✅ Lazy loading of GridFS files
-- ✅ Encrypted vs unencrypted GridFS storage
+- ✅ Store large binaries in external storage (>1KB)
+- ✅ Lazy loading of external storage files
+- ✅ Encrypted vs unencrypted external storage
 - ✅ Update large binary fields
-- ✅ GridFS cleanup on entity delete
+- ✅ External storage cleanup on entity delete
 - ✅ Transition from small to large file
 - ✅ Handle null binary fields
 - ✅ Multiple large files in same entity
 
-**9 tests** covering GridFS integration and lazy loading.
+**9 tests** covering storage integration and lazy loading.
 
 ### 4. **EncryptableListTest.kt** - Collection Management
 
@@ -113,9 +113,9 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 - ✅ Do not cleanup entity that was saved
 - ✅ Cleanup unsaved entity with nested @PartOf entities
 - ✅ Cleanup unsaved entity with list of @PartOf entities
-- ✅ Cleanup unsaved entity with associated GridFS files
+- ✅ Cleanup unsaved entity with associated external storage files
 - ✅ Prevent orphaned resources
-- ✅ Verify cascade delete for nested/list/GridFS
+- ✅ Verify cascade delete for nested/list/external storage
 
 **7 tests** covering unsaved entity handling and cleanup.
 
@@ -127,13 +127,13 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 **3 tests** covering secret rotation and data integrity after secret update.
 
-### 10. **EncryptableGridFSRotationTest.kt** - Secret Rotation with GridFS Files
+### 10. **EncryptableStorageRotationTest.kt** - Secret Rotation with External Storage Files
 
-- ✅ Rotate secret for entities with large GridFS files (>1KB)
+- ✅ Rotate secret for entities with large external storage files (>1KB)
 - ✅ Ensure entity is not accessible with the old secret after rotation
 - ✅ Ensure entity is accessible with the new secret and all file data is preserved (both encrypted and unencrypted fields)
 
-**3 tests** covering secret rotation and data integrity for entities with large GridFS files.
+**3 tests** covering secret rotation and data integrity for entities with large external storage files.
 
 ### 11. **CryptoPropertiesTest.kt** - Crypto Properties (Unit)
 
@@ -158,9 +158,17 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 **7 tests** covering polymorphic nested entities without type annotations.
 
+### 13. **EncryptableCustomStorageTest.kt** - Custom Storage Backend
+
+- ✅ Store and retrieve entities with a field using a custom storage annotation (`@MemoryStorage`)
+- ✅ Verifies integration of a user-defined IStorage implementation (MemoryStorageImpl) via annotation
+- ✅ Ensures data is correctly stored, retrieved, and cleaned up using the custom backend
+
+**1 test** demonstrating how to plug in and test a custom storage backend with minimal boilerplate.
+
 ## Total Coverage
 
-- **81 test cases** across 13 test files
+- **82 test cases** across 14 test files
 - All major framework features tested
 - Edge cases and error scenarios covered
 - Integration tests for complex workflows
@@ -177,7 +185,7 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 ```bash
 ./gradlew test --tests EncryptableBasicTest
-./gradlew test --tests EncryptableGridFSTest
+./gradlew test --tests EncryptableStorageTest
 ./gradlew test --tests EncryptablePolymorphicTest
 ./gradlew test --tests CryptoPropertiesTest
 ```
@@ -192,7 +200,7 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 - MongoDB running locally (default: `localhost:27017`)
 - Test database: Tests will use the configured database
-- GridFS support enabled
+- External storage support enabled
 
 > Note: `CryptoPropertiesTest` does not require MongoDB.
 

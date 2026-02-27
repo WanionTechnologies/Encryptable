@@ -1,6 +1,7 @@
 package tech.wanion.encryptable.mongo
 
 import com.mongodb.ReadPreference
+import com.mongodb.client.MongoCollection
 import org.bson.Document
 import org.bson.types.Binary
 import org.slf4j.LoggerFactory
@@ -245,6 +246,16 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     override fun getMongoOperations(): MongoOperations = mongoOperations
 
     /**
+     * # getMongoCollection
+     *
+     * Gets the `MongoCollection<Document>` for this repository, allowing direct access to collection-level operations.
+     *
+     * ## Returns
+     * - The `MongoCollection<Document>` instance for this repository.
+     */
+    override fun getMongoCollection(): MongoCollection<Document> = collection
+
+    /**
      * # markForCleanup
      *
      * Marks a newly created entity for conditional cleanup at request end.
@@ -263,7 +274,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * - `IllegalArgumentException` if the entity is not new.
      */
     override fun markForCleanup(entity: T) {
-        require(entity.isNew()) { "Only new entities can be marked for cleanup." }
+        require(Encryptable.isNew(entity)) { "Only new entities can be marked for cleanup." }
         getNewEntityList().add(entity)
     }
 
@@ -401,9 +412,11 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         try {
             // Perform rotation
             val id = encryptable.id ?: throw IllegalStateException("Entity must have an ID to rotate secret.")
+            beforeRotationMethod.invoke(encryptable)
+            if (Encryptable.hasErrored(encryptable))
+                throw IllegalStateException("Entity is in an errored state after preparing for rotation. Rotation aborted to prevent data corruption.")
             val query = Query(Criteria.where(entityInformation.idAttribute).`is`(id))
             mongoOperations.remove(query, entityInformation.javaType)
-            beforeRotationMethod.invoke(encryptable)
             removeEntityInfo(id)
             encryptable.withSecret(newSecret)
             save(encryptable)
@@ -475,10 +488,11 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      */
     override fun <S : T> save(entity: S): S {
         Assert.notNull(entity, "Entity must not be null")
-        if (entity.isNew()) {
+        if (Encryptable.isNew(entity)) {
             prepareMethod.invoke(entity)
             return mongoOperations.insert(entity)
         }
+        afterSave(entity)
         return entity
     }
 
@@ -506,6 +520,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             return emptyList()
         newEntities.parallelForEach { prepareMethod.invoke(it) }
         val savedEntities = mongoOperations.insertAll(newEntities)
+        afterSaveAll(entities)
         return ArrayList(savedEntities)
     }
 
@@ -620,11 +635,12 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * ## Parameters
      * - `secret`: The secret string used to deterministically generate the entity's CID.
      * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
+     * - `touchIt`: If true, updates the entity's tracking information to reflect that it has been accessed.
      *
      * ## Returns
      * - `Optional<T>` containing the entity if found, or empty if not found.
      */
-    override fun findBySecret(secret: String, secretAsId: Boolean): Optional<T> {
+    override fun findBySecret(secret: String, secretAsId: Boolean, touchIt: Boolean): Optional<T> {
         // secret should be cleared at the end of the request to limit exposure in memory.
         // the restore method already does this, but we're doing it here as well just to be safe.
         markForWiping(secret)
@@ -653,7 +669,8 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             if (EncryptableConfig.integrityCheck)
                 integrityCheck(entity)
             // touch() to update audit fields
-            entity.touch()
+            if (touchIt)
+                entity.touch()
         }
         return entityOpt
     }
@@ -672,11 +689,12 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * ## Parameters
      * - `secrets`: Iterable of secret strings to search for.
      * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
+     * - `touchThem`: If true, updates the entities' tracking information to reflect that they have been accessed.
      *
      * ## Returns
      * - List of entities whose CID matches any of the provided secrets. Returns an empty list if none found.
      */
-    override fun findBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean): List<T> {
+    override fun findBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean, touchThem: Boolean): List<T> {
         // secrets should be cleared at the end of the request to limit exposure in memory.
         // the restore method already does this, but we're doing it here as well just to be safe.
         markForWiping(secrets)
@@ -714,7 +732,9 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
                 // Check and clean up any broken reference.
                 if (EncryptableConfig.integrityCheck)
                     integrityCheck(entity)
-                entity.touch()
+                // touch() to update audit fields
+                if (touchThem)
+                    entity.touch()
         }
         entities.filterNotNull()
         return entities
@@ -935,7 +955,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         // Cascade delete unsaved new entities
         // parallelForEach to improve performance as it is I/O bound
         newEntities.parallelForEach { newEntity ->
-            if (!newEntity.isNew()) return@parallelForEach
+            if (!Encryptable.isNew(newEntity)) return@parallelForEach
             // New entity was not saved, perform cascade delete to clean up resources
             try {
                 cascadeDeleteMethod.invoke(newEntity)
@@ -988,7 +1008,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         val query = Query(Criteria.where("_id").`is`(entity.id))
         val update = Update()
         for ((field, _) in changedFields) {
-            val value = entity.metadata.persistedFields[field]?.get(entity)
+            val value = Encryptable.getMetadataFor(entity).persistedFields[field]?.get(entity)
             update.set(field, value)
         }
         bulkOps.updateOne(query, update)

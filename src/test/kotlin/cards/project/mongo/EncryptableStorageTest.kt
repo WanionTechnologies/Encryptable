@@ -9,19 +9,15 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 
 /**
- * Tests for GridFS integration and large binary field handling
+ * Tests for Storage integration and large binary field handling
  */
-class EncryptableGridFSTest : BaseEncryptableTest() {
+class EncryptableStorageTest : BaseEncryptableTest() {
 
     @Autowired
     private lateinit var documentRepository: TestDocumentRepository
 
     @Autowired
     private lateinit var fileRepository: TestFileRepository
-
-    private fun createSampleBytes(sizeInKB: Int): ByteArray {
-        return ByteArray(sizeInKB * 1024) { (it % 256).toByte() }
-    }
 
     @Test
     fun `should store small binary in document`() {
@@ -48,7 +44,7 @@ class EncryptableGridFSTest : BaseEncryptableTest() {
     }
 
     @Test
-    fun `should store large binary in GridFS`() {
+    fun `should store large binary in Storage`() {
         // Given - 500KB (greater than 1KB threshold)
         val secret = generateSecret()
         val largeData = createSampleBytes(500)
@@ -65,7 +61,7 @@ class EncryptableGridFSTest : BaseEncryptableTest() {
         assertNotNull(retrieved)
         assertEquals("Large Document", retrieved?.title)
 
-        // Access the large field - triggers lazy load from GridFS
+        // Access the large field - triggers lazy load from Storage
         val loadedContent = retrieved?.pdfContent
         assertNotNull(loadedContent)
         assertEquals(500 * 1024, loadedContent?.size)
@@ -75,7 +71,7 @@ class EncryptableGridFSTest : BaseEncryptableTest() {
     }
 
     @Test
-    fun `should lazy load GridFS files on access`() {
+    fun `should lazy load Storage files on access`() {
         // Given
         val secret = generateSecret()
         val largeData = createSampleBytes(1000) // 1MB
@@ -105,7 +101,7 @@ class EncryptableGridFSTest : BaseEncryptableTest() {
     }
 
     @Test
-    fun `should handle encrypted and unencrypted GridFS files`() {
+    fun `should handle encrypted and unencrypted Storage files`() {
         // Given
         val secret = generateSecret()
         val publicData = createSampleBytes(100) // 100KB
@@ -160,7 +156,7 @@ class EncryptableGridFSTest : BaseEncryptableTest() {
     }
 
     @Test
-    fun `should cleanup GridFS files on entity delete`() {
+    fun `should cleanup Storage files on entity delete`() {
         // Given
         val secret = generateSecret()
         val document = TestDocument().withSecret(secret).apply {
@@ -177,7 +173,7 @@ class EncryptableGridFSTest : BaseEncryptableTest() {
         val exists = documentRepository.existsBySecret(secret)
         assertFalse(exists)
 
-        // GridFS files should also be cleaned up (verified by framework internals)
+        // Storage files should also be cleaned up (verified by framework internals)
     }
 
     @Test
@@ -200,7 +196,7 @@ class EncryptableGridFSTest : BaseEncryptableTest() {
         // this shouldn't be done manually in real code.
         documentRepository.flushThenClear()
 
-        // Then - should now be in GridFS
+        // Then - should now be in Storage
         val afterUpdate = documentRepository.findBySecretOrNull(secret)
         assertEquals(500 * 1024, afterUpdate?.pdfContent?.size)
 

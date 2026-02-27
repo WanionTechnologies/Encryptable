@@ -99,7 +99,7 @@ class EncryptableList<T: Encryptable<T>>(
     private val isolated: Boolean
 
     init {
-        val metadata = encryptable.metadata
+        val metadata = Encryptable.getMetadataFor(encryptable)
         val field = metadata.encryptableListFields[fieldName] ?: throw IllegalArgumentException("Field '$fieldName' not found in ${encryptable::class.java.name}")
         // Check that the field is of type List
         if (!List::class.java.isAssignableFrom(field.type))
@@ -287,7 +287,7 @@ class EncryptableList<T: Encryptable<T>>(
      */
     override fun add(element: T): Boolean = lock.withLock {
         try {
-            val isNew = element.isNew()
+            val isNew = Encryptable.isNew(element)
             val secret = Encryptable.getSecretOf(element)
             // only save if it is new
             if (isNew)
@@ -308,7 +308,7 @@ class EncryptableList<T: Encryptable<T>>(
      */
     override fun add(index: Int, element: T) = lock.withLock {
         try {
-            val isNew = element.isNew()
+            val isNew = Encryptable.isNew(element)
             val secret = Encryptable.getSecretOf(element)
             // only save if it is new
             if (isNew)
@@ -330,7 +330,7 @@ class EncryptableList<T: Encryptable<T>>(
         if (elements.isEmpty())
             return false
         try {
-            val newList = elements.filter { it.isNew() }
+            val newList = elements.filter { element -> Encryptable.isNew(element) }
             val secrets = elements.map { Encryptable.getSecretOf(it) }
             val secretsToSave = secrets.map { secret ->
                 if (isolated) secret else {
@@ -360,7 +360,7 @@ class EncryptableList<T: Encryptable<T>>(
      */
     override fun addAll(index: Int, elements: Collection<T>): Boolean = lock.withLock {
         try {
-            val newList = elements.filter { it.isNew() }
+            val newList = elements.filter { element -> Encryptable.isNew(element) }
             newList.parallelForEach {
                 encryptableMongoRepository.save(it)
             }

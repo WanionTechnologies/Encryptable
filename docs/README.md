@@ -36,6 +36,7 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 | [SECURITY_WITHOUT_AUDIT.md](SECURITY_WITHOUT_AUDIT.md)               | Security analysis without formal audit considerations                 |
 | [SECURITY_WITHOUT_SECRET.md](SECURITY_WITHOUT_SECRET.md)             | Security architecture without persistent secrets                      |
 | [SPONSORSHIP_GOALS.md](SPONSORSHIP_GOALS.md)                         | Sponsorship tiers, funding strategy, and transparent budgets          |
+| [STORAGE.md](STORAGE.md)                                               | Storage abstraction, built-in GridFS support, and custom storage backends (S3, file system, etc.) |
 | [WHO_WOULD_VALUE_THIS_FRAMEWORK.md](WHO_WOULD_VALUE_THIS_FRAMEWORK.md) | Target users and organizations for Encryptable                        |
 | [WHY_AVOIDING_STRINGS_IS_HARD_IN_JAVA.md](WHY_AVOIDING_STRINGS_IS_HARD_IN_JAVA.md) | Technical challenges of avoiding String types in Java/Kotlin          |
 

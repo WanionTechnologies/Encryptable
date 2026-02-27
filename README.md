@@ -87,7 +87,7 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 ---
 
 ## ✅ Test Runtime
-Test Runtime	✅ 81 passing tests (100%) | 0 failing  
+Test Runtime	✅ 82 passing tests (100%) | 0 failing  
 Detailed test overview [here](src/test/kotlin/cards/project/README.md).
 
 ---

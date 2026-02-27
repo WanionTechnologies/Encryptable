@@ -1,5 +1,7 @@
 package tech.wanion.encryptable.mongo
 
+import com.mongodb.client.MongoCollection
+import org.bson.Document
 import org.springframework.data.mongodb.core.MongoOperations
 import org.springframework.data.mongodb.repository.MongoRepository
 import org.springframework.data.repository.NoRepositoryBean
@@ -34,6 +36,14 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
     fun getMongoOperations(): MongoOperations
 
     /**
+     * Gets the `MongoCollection<Document>` for this repository.
+     *
+     * ### Returns
+     * - The `MongoCollection<Document>` instance.
+     */
+    fun getMongoCollection(): MongoCollection<Document>
+
+    /**
      * # markForCleanup
      *
      * Marks a newly created entity for conditional cleanup at request end.
@@ -64,6 +74,42 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
      * - `newSecret`: The new secret string to rotate to.
      */
     fun rotateSecret(oldSecret: String, newSecret: String)
+
+    /**
+     * Saves an entity with the provided secret string.
+     *
+     * This method sets the secret on the entity before saving it to the database.
+     *
+     * ### Parameters
+     * - `entity`: The entity to save.
+     * - `secret`: The secret string to associate with the entity.
+     *
+     * ### Returns
+     * - The saved entity instance.
+     */
+    fun saveWithSecret(entity: T, secret: String): T = save(entity.withSecret(secret))
+
+    /**
+     * Hook method called after an entity is saved to the database.
+     *
+     * This method can be overridden to perform additional actions after an entity is persisted,
+     * such as logging, updating related data, or triggering events.
+     *
+     * ### Parameters
+     * - `entity`: The entity instance that was just saved.
+     */
+    fun afterSave(entity: T) {}
+
+    /**
+     * Hook method called after multiple entities are saved to the database.
+     *
+     * This method can be overridden to perform additional actions after multiple entities are persisted,
+     * such as logging, updating related data, or triggering events.
+     *
+     * ### Parameters
+     * - `entities`: Iterable of entity instances that were just saved.
+     */
+    fun afterSaveAll(entities: Iterable<T>) {}
 
     /**
      * Checks if an entity exists by its secret string.
@@ -114,11 +160,12 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
      * ### Parameters
      * - `secret`: The secret string.
      * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
+     * - `touchIt`: If true, updates the entity's tracking information to reflect that it has been accessed.
      *
      * ### Returns
      * - `Optional<T>` containing the entity if found.
      */
-    fun findBySecret(secret: String, secretAsId: Boolean = false): Optional<T>
+    fun findBySecret(secret: String, secretAsId: Boolean = false, touchIt: Boolean = true): Optional<T>
 
     /**
      * Finds an entity by its secret string, or returns `null` if not found.
@@ -126,11 +173,12 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
      * ### Parameters
      * - `secret`: The secret string.
      * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
+     * - `touchIt`: If true, updates the entity's tracking information to reflect that it has been accessed.
      *
      * ### Returns
      * - The entity if found, or `null`.
      */
-    fun findBySecretOrNull(secret: String, secretAsId: Boolean = false): T? = findBySecret(secret, secretAsId).orElse(null)
+    fun findBySecretOrNull(secret: String, secretAsId: Boolean = false, touchIt: Boolean = true): T? = findBySecret(secret, secretAsId).orElse(null)
 
     /**
      * Finds all entities matching the given list of secret strings.
@@ -138,11 +186,12 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
      * ### Parameters
      * - `secrets`: Iterable of secret strings.
      * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
+     * - `touchThem`: If true, updates the entities' tracking information to reflect that they have been accessed.
      *
      * ### Returns
      * - List of matching entities (`List<T>`).
      */
-    fun findBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false): List<T>
+    fun findBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false, touchThem: Boolean = true): List<T>
 
     /**
      * Deletes an entity by its secret string.

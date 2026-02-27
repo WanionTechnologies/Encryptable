@@ -5,3 +5,5 @@ org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
 # Early Run Listener for logging defaults
 org.springframework.boot.SpringApplicationRunListener=\
   tech.wanion.encryptable.config.EncryptableLoggingDefaultsRunListener
+
+org.springframework.context.ApplicationContextInitializer=tech.wanion.encryptable.config.EncryptableMigrationSchedulerDisabler

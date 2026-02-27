@@ -6,6 +6,8 @@ import ch.qos.logback.core.ConsoleAppender
 import org.slf4j.LoggerFactory
 import org.springframework.boot.CommandLineRunner
 import org.springframework.stereotype.Component
+import tech.wanion.encryptable.mongo.migration.Migration107to108
+import kotlin.system.exitProcess
 
 @Component
 class EncryptableRunner : CommandLineRunner {
@@ -28,13 +30,14 @@ class EncryptableRunner : CommandLineRunner {
                         if (encoder is PatternLayoutEncoder) encoder.pattern else null
                     }
                     else -> null
-                } ?: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} [%thread] %-5level %logger -- %msg%n"
+                } ?: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %highlight(%-5.5level) [%thread] %logger{0} -- %msg%n"
 
                 // Remove logger name and log level from the pattern
                 val modifiedPattern = existingPattern
                     .replace(Regex("""\s*\[%thread]\s*"""), " ")
+                    .replace(Regex("""\s*%logger\{0}\s*"""), "")
                     .replace(Regex("""\s*%logger\s*"""), "")
-                    .replace(Regex("""\s*--\s*"""), "")
+                    .replace(Regex("""\s*--\s*"""), " ")
                     .trim()
 
                 val classLogger = ctx.getLogger(this.javaClass.name)
@@ -87,7 +90,30 @@ class EncryptableRunner : CommandLineRunner {
         logger.info("- Single Request Multithreading limited to up to ${EncryptableConfig.threadLimit} threads.")
         val integrityCheckStatus = if (EncryptableConfig.integrityCheck) "enabled" else "disabled"
         logger.info("- Entity Integrity Check is $integrityCheckStatus.")
-        logger.info("- GridFS Threshold is set to ${EncryptableConfig.gridFsThreshold} bytes.")
+        logger.info("- Storage Threshold is set to ${EncryptableConfig.storageThreshold} bytes.")
+        val migrationStatus = if (EncryptableConfig.migration) "enabled" else "disabled"
+        logger.info("- Migration is $migrationStatus.")
         logger.info(line)
+        if (!EncryptableConfig.migration || isTestEnvironment())
+            return
+        migrate()
+        logger.info("- Exiting application to prevent potential issues. Please disable `encryptable.migration`.")
+        logger.info(line)
+        exitProcess(0)
+    }
+
+    /** Performs database migration if needed */
+    private fun migrate() {
+        val migration = Migration107to108()
+        if (!migration.shouldMigrate()) {
+            logger.info("- No migration needed. Current database is compatible with this version of Encryptable.")
+            return
+        }
+        logger.info("- Encryptable is Starting Migration from version ${migration.fromVersion()} to version ${migration.toVersion()}.")
+        logger.info("- Migration will update the database schema and data as needed to ensure compatibility with this version of Encryptable.")
+        logger.info("- Do not stop the application until migration is complete. This may take some time depending on the size of your database.")
+        migration.migrateSchema()
+        migration.migrateData()
+        logger.info("- Migration completed.")
     }
 }

@@ -634,6 +634,48 @@ val pdf = retrieved.pdfContent  // Automatically loaded and decrypted!
 
 ---
 
+## GridFS Integration and Extensibility
+
+Encryptable provides out-of-the-box integration with MongoDB GridFS for storing large files and binary data. However, the storage abstraction is designed to be easily extendable to support any kind of storage backend, such as Amazon S3, S3-compatible services, or even custom file systems.
+
+### Extending to Other Storage Backends
+
+The framework's storage system is built around the `IStorage` interface. To add support for a new storage backend:
+
+1. **Implement the `IStorage` interface** for your storage type (e.g., S3, file system, etc.).
+2. **Create a custom annotation** (e.g., `@S3Storage`) and annotate it with `@Storage(storageClass = YourStorageImpl::class)`.
+3. **Annotate your entity field** with your custom annotation. Encryptable will automatically use your storage implementation for that field.
+
+This approach is extremely straightforward and minimizes boilerplate. The provided `GridFSStorage` implementation serves as a template for creating your own storage backends.
+
+**Example:**
+```kotlin
+@Component
+class S3StorageImpl : IStorage<ReferenceObj> { /* ... */ }
+
+@Target(AnnotationTarget.FIELD)
+@Storage(storageClass = S3StorageImpl::class)
+annotation class S3Storage
+
+class MyEntity : Encryptable<MyEntity>() {
+    @S3Storage
+    @Encrypt
+    var myFile: ByteArray? = null
+}
+```
+
+**Note:** The storage implementation does not need to handle encryption. If you annotate the field with `@Encrypt`, Encryptable will transparently encrypt and decrypt the data for you.
+
+This design makes it as easy as possible to add new storage backends with minimal effort, following the same pattern as the built-in GridFS integration.
+
+**Automatic Update and Deletion:**
+- If you set a storage-backed `ByteArray` field to a new value, Encryptable will automatically update the stored file or object in the underlying storage backend (GridFS, S3, etc.), creating a new entry and deleting the old one if needed. This ensures that the storage always reflects the current state of your entity.
+- If you set the field to `null`, Encryptable will delete the associated file or object from the storage backend, preventing orphaned files and keeping storage in sync with your data model.
+
+These capabilities demonstrate the power and convenience of Encryptable's storage abstraction, allowing seamless, automatic management of external files with minimal code and no manual cleanup required.
+
+---
+
 ## 🎯 Innovation Summary
 
 ### **Novel Innovations for MongoDB**
@@ -679,4 +721,3 @@ Encryptable introduces **nine major innovations** to the MongoDB persistence and
 ---
 
 **Last Updated:** 2026-01-30
-**Framework Version:** 1.0.7

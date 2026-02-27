@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import tech.wanion.encryptable.mongo.Encryptable
 
 /**
  * Tests for automatic cleanup of unsaved entities at request end.
@@ -45,7 +46,7 @@ class EncryptableUnsavedCleanupTest : BaseEncryptableTest() {
         }
 
         // Verify the entity is marked as new
-        assertTrue(address.isNew(), "Address should be new (unsaved)")
+        assertTrue(Encryptable.isNew(address), "Address should be new (unsaved)")
 
         // When
         // simulate the end of the request.
@@ -71,7 +72,7 @@ class EncryptableUnsavedCleanupTest : BaseEncryptableTest() {
         addressRepository.save(address)
 
         // Verify the entity is no longer new
-        assertFalse(address.isNew(), "Address should not be new after save")
+        assertFalse(Encryptable.isNew(address), "Address should not be new after save")
 
         // When
         // simulate the end of the request.
@@ -124,7 +125,7 @@ class EncryptableUnsavedCleanupTest : BaseEncryptableTest() {
         // Verify addresses exist before cleanup
         assertTrue(addressRepository.existsBySecret(billingSecret))
         assertTrue(addressRepository.existsBySecret(shippingSecret))
-        assertTrue(customer.isNew(), "Customer should be new (unsaved)")
+        assertTrue(Encryptable.isNew(customer), "Customer should be new (unsaved)")
 
         // When
 
@@ -179,7 +180,7 @@ class EncryptableUnsavedCleanupTest : BaseEncryptableTest() {
         // Verify items exist before cleanup
         assertTrue(itemRepository.existsBySecret(item1Secret))
         assertTrue(itemRepository.existsBySecret(item2Secret))
-        assertTrue(container.isNew(), "Container should be new (unsaved)")
+        assertTrue(Encryptable.isNew(container), "Container should be new (unsaved)")
 
         // When
 
@@ -222,7 +223,7 @@ class EncryptableUnsavedCleanupTest : BaseEncryptableTest() {
 
         // Verify address exists
         assertTrue(addressRepository.existsBySecret(addressSecret))
-        assertTrue(company.isNew(), "Company should be new (unsaved)")
+        assertTrue(Encryptable.isNew(company), "Company should be new (unsaved)")
 
         // When
 
@@ -271,9 +272,9 @@ class EncryptableUnsavedCleanupTest : BaseEncryptableTest() {
         addressRepository.save(address3)
 
         // Verify states
-        assertTrue(address1.isNew())
-        assertTrue(address2.isNew())
-        assertFalse(address3.isNew())
+        assertTrue(Encryptable.isNew(address1))
+        assertTrue(Encryptable.isNew(address2))
+        assertFalse(Encryptable.isNew(address3))
 
         // When
 
@@ -350,8 +351,8 @@ class EncryptableUnsavedCleanupTest : BaseEncryptableTest() {
         assertTrue(itemRepository.existsBySecret(item1Secret))
         assertTrue(itemRepository.existsBySecret(item2Secret))
         assertTrue(addressRepository.existsBySecret(addressSecret))
-        assertTrue(customer.isNew())
-        assertTrue(container.isNew())
+        assertTrue(Encryptable.isNew(customer))
+        assertTrue(Encryptable.isNew(container))
 
         // When - simulate end of request
         customerRepository.flushThenClear()

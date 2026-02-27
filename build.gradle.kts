@@ -12,7 +12,7 @@ import java.util.Base64
 plugins {
     kotlin("jvm") version "2.2.21" // Kotlin JVM plugin
     kotlin("plugin.spring") version "2.2.21" // Kotlin Spring plugin
-    id("org.springframework.boot") version "4.0.2" // Spring Boot plugin
+    id("org.springframework.boot") version "4.0.3" // Spring Boot plugin
     id("io.spring.dependency-management") version "1.1.7" // Spring Dependency Management
     id("io.freefair.aspectj.post-compile-weaving") version "9.0.0"
     id("maven-publish") // Required for publishing block
@@ -21,7 +21,8 @@ plugins {
 }
 
 group = "tech.wanion"
-version = "1.0.7"
+version = "1.0.8"
+description = "Encryptable is a Transient-Knowledge ORM-like Framework for Spring Data MongoDB. Providing secure, anonymous, and compliant data protection with minimal developer effort."
 
 // Version variables from gradle.properties
 val kotlinVersion: String by project

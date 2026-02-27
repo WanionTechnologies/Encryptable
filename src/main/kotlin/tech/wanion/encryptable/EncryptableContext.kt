@@ -93,6 +93,9 @@ final class EncryptableContext : ApplicationContextAware {
             return toClearThreadLocal.get() ?: Collections.synchronizedSet(Collections.newSetFromMap(IdentityHashMap<Any, Boolean>())).also { toClearThreadLocal.set(it) }
         }
 
+        /** Retrieves all registered repositories as an immutable collection. */
+        fun getAllRepositories(): Collection<EncryptableMongoRepository<out Encryptable<*>>> = repositories.values.toList()
+
         /**
          * Marks one or more objects for wiping at the end of the request.
          * Supported types: String (zerify), ByteArray (parallelFill(0)), SecretKeySpec (clear).

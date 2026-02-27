@@ -26,8 +26,8 @@ The following dependencies are required for Encryptable.
 |------------|---------|---------|
 | org.jetbrains.kotlin:kotlin-stdlib | 2.2.21  | Kotlin standard library |
 | org.jetbrains.kotlin:kotlin-reflect | 2.2.21  | Kotlin reflection support |
-| org.springframework.boot:spring-boot-starter-webmvc | 4.0.2   | Spring Boot web framework |
-| org.springframework.boot:spring-boot-starter-data-mongodb | 4.0.2   | MongoDB persistence layer |
+| org.springframework.boot:spring-boot-starter-webmvc | 4.0.3   | Spring Boot web framework |
+| org.springframework.boot:spring-boot-starter-data-mongodb | 4.0.3   | MongoDB persistence layer |
 | at.favre.lib:hkdf | 2.0.0   | HKDF key derivation (RFC 5869) |
 | org.aspectj:aspectjrt | 1.9.25  | AspectJ runtime |
 | org.aspectj:aspectjweaver | 1.9.25  | AspectJ weaving (AOP) |
@@ -43,7 +43,7 @@ The following dependencies are required for Encryptable.
 The following Gradle plugins are required for Encryptable to function correctly:
 
 ```kotlin
-id("org.springframework.boot") version "4.0.2"
+id("org.springframework.boot") version "4.0.3"
 id("io.spring.dependency-management") version "1.1.7"
 id("io.freefair.aspectj.post-compile-weaving") version "9.0.0"
 ```
@@ -59,12 +59,12 @@ To add the Encryptable Starter to your project, use:
 ```kotlin
 dependencies {
     // Encryptable Starter (includes all required dependencies)
-    implementation("tech.wanion:encryptable-starter:1.0.7")
+    implementation("tech.wanion:encryptable-starter:1.0.8")
   
     // Encryptable Aspects
-    aspect("tech.wanion:encryptable:1.0.7")
+    aspect("tech.wanion:encryptable:1.0.8")
     // Encryptable Aspects for Tests
-    testAspect("tech.wanion:encryptable:1.0.7")
+    testAspect("tech.wanion:encryptable:1.0.8")
 }
 ```
 

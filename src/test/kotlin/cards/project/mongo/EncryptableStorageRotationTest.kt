@@ -11,13 +11,13 @@ class EncryptableGridFSRotationTest : BaseEncryptableTest() {
     lateinit var fileRepository: TestFileRepository
 
     @Test
-    fun `rotateSecret should work for entities with GridFS files larger than 1KB`() {
+    fun `rotateSecret should work for entities with Storage files larger than 1KB`() {
         // Arrange
         val oldSecret = generateSecret()
         val newSecret = generateSecret()
         val fileName = "largefile.bin"
-        val publicContent = ByteArray(2048) { 0x42 }
-        val privateContent = ByteArray(2048) { 0x24 }
+        val publicContent = createSampleBytes(1024) // 1MB of random data
+        val privateContent = createSampleBytes(1024) // 1MB of random data
         val file = TestFile().apply {
             this.fileName = fileName
             this.publicContent = publicContent.copyOf()
@@ -49,9 +49,11 @@ class EncryptableGridFSRotationTest : BaseEncryptableTest() {
         // Assert: accessible with new secret and data is intact
         val foundNew = fileRepository.findBySecretOrNull(newSecret)
         assertNotNull(foundNew)
-        assertEquals(fileName, foundNew?.fileName)
-        assertArrayEquals(publicContent, foundNew?.publicContent)
-        assertArrayEquals(privateContent, foundNew?.privateContent)
+        foundNew as TestFile
+
+        assertEquals(fileName, foundNew.fileName)
+        assertArrayEquals(publicContent, foundNew.publicContent)
+        assertArrayEquals(privateContent, foundNew.privateContent)
 
         fileRepository.deleteBySecret(newSecret)
     }

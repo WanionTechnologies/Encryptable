@@ -13,7 +13,7 @@ import java.util.stream.*
 
 Provides utilities for creating thread pools and dispatchers with a controlled number of concurrent threads.
 
-- The thread limit is set to a configurable percentage (default: 42%) of available processors, with a minimum of 1 thread.
+- The thread limit is set to a configurable percentage (default: 38%) of available processors, with a minimum of 1 thread.
 - This helps prevent resource exhaustion while enabling efficient concurrent execution.
 
 ## Usage Guidance
@@ -26,17 +26,12 @@ object Limited {
     /**
      * The maximum number of threads allowed for parallel execution per request.
      *
-     * This limit is set to a configurable percentage (default: 34%) of available processors (logical cores), with a minimum of 1 thread.
+     * This limit is set to a configurable percentage (default: 38%) of available processors (logical cores), with a minimum of 1 thread.
      *
      * Purpose:
      * - Prevents a single request from exhausting all server resources by capping the number of threads it can use.
      * - Ensures fair resource allocation and system stability, especially in multi-tenant or high-concurrency environments.
      * - Allows efficient parallelism for CPU-bound tasks without risking thread starvation or degraded performance for other requests.
-     *
-     * Why 34%?
-     * - The default value is set to 0.34 (34%) to ensure that, when multiplied by the number of logical cores and rounded down to an integer,
-     *   the thread limit does not scale down too aggressively due to floating-point rounding. This provides a more consistent and predictable allocation of threads per request, especially on systems with SMT (Simultaneous Multithreading).
-     * - On processors with SMT (e.g., AMD or Intel CPUs with 2 threads per physical core), 34% of logical cores corresponds to approximately 2/3 of the physical cores. For example, on a CPU with 16 physical cores and SMT (32 logical cores), 34% of 32 is about 10, which is roughly 2/3 of 16 physical cores. This ensures a safe and efficient thread cap for CPU-bound workloads.
      *
      * The value can be configured via the 'thread.limit.percentage' property in the environment.
      */

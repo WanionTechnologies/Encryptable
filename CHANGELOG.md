@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.4** (2026-01-07) - Master Secret Support for @Id Entities
 - **1.0.5** (2026-01-18) - Security: Remove Cross-Reference Leak Vectors
 - **1.0.6** (2026-01-24) - Performance: Code Optimizations & Bulk Updates
-- **1.0.7** (2026-02-??) - Polymorphic Relationships Support
+- **1.0.7** (2026-01-30) - Polymorphic Relationships Support
+- **1.0.8** (2026-02-27) - Major Improvements & Critical Security Fixes
 
 ---
 ## [1.0.0] - 2025-12-12 (Initial Release)
@@ -258,7 +259,54 @@ class MyEntity : Encryptable<MyEntity>() {
 Added support for polymorphic relationships between entities, allowing a single field to reference multiple entity types.  
 Without annotations or configurations, the framework can automatically handle polymorphic associations.
 
---- 
+---
+
+## [1.0.8] - 2026-02-27
+
+### 🛠️ Major Improvements & Critical Security Fixes
+
+- **Critical Security Fix:**
+  - Fixed encryption of `ByteArray` fields for `@Id` entities. Previously, the secret used for encryption was the same as the entity id, which would compromise security. Now, the correct secret (master secret) is always used for encryption in @Id entities.
+- **Data Migration Support:**
+  - Added robust migration logic to update existing data to the new, secure encryption scheme. Automatically detects and re-encrypts affected fields with the correct secret.
+- **Storage Abstraction:**
+  - Refactored storage logic to support multiple backends (e.g., GridFS, S3, inline storage). Storage classes now follow SOLID principles and are decoupled from encryption logic.
+- **Documentation Updates:**
+  - Updated all documentation and class/method references to use generic storage terminology instead of GridFS-specific names, preparing for S3 and other storage integrations.
+- **Configuration Enhancements:**
+  - Added `encryptable.migration` configuration property to control migration behavior.
+  - Improved documentation for configuration and migration options.
+- **Performance & Reliability:**
+  - Optimized migration and storage operations for large datasets.
+  - Improved error handling and logging during migration and storage operations.
+- **Console Formatting:**
+  - Enhanced console output with improved formatting and highlighting for better readability and user experience.
+- **Testing:**
+  - Expanded and revised test coverage for new storage and migration logic.
+- **Spring Boot Update:**
+  - Upgraded Spring Boot from 4.0.2 to 4.0.3 for improved stability and compatibility.
+
+**Migration Notice:**
+If you are upgrading from a previous version, you **MUST** start your application with `encryptable.migration=true` on the first run after upgrading to 1.0.8. This ensures all data is migrated to the new encryption scheme and prevents data access issues.
+
+**⚠️ Important:** Do not close or interrupt the application while migration is in progress. Interrupting the migration process can result in partial updates and a **VERY HIGH RISK OF DATA CORRUPTION**. Wait until the application logs confirm that migration has completed successfully before stopping or restarting the application.
+
+**Property Rename Required:**
+After migration, you must rename the property `encryptable.gridfs.threshold` to `encryptable.storage.threshold` in all configuration files and environments. This change is necessary because Encryptable now supports multiple storage backends, not just GridFS. Failing to update this property will result in the threshold setting being ignored.
+
+**Example:**
+- Before:
+  ```properties
+  encryptable.gridfs.threshold=2048
+  ```
+- After:
+  ```properties
+  encryptable.storage.threshold=2048
+  ```
+
+**Note:** This release includes significant internal refactoring and security improvements. All users are strongly encouraged to upgrade and run the migration to ensure data is encrypted with the correct secret.
+
+---
 
 ## Contributing
 

@@ -1,12 +1,10 @@
 package tech.wanion.encryptable.mongo
 
-import org.bson.types.ObjectId
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.Transient
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.data.mongodb.gridfs.GridFsTemplate
-import java.io.InputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 import java.util.*
@@ -16,6 +14,7 @@ import tech.wanion.encryptable.MasterSecretHolder
 import tech.wanion.encryptable.config.EncryptableConfig
 import tech.wanion.encryptable.mongo.CID.Companion.cid
 import tech.wanion.encryptable.mongo.Encryptable.Companion.getSecretOf
+import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.AES256
 import tech.wanion.encryptable.util.HKDF
 import tech.wanion.encryptable.util.Limited.parallelForEach
@@ -25,28 +24,28 @@ import tech.wanion.encryptable.util.extensions.*
 /**
  * # Encryptable
  *
- * Abstract base class for secure, persistent entities supporting field-level encryption, nested object graphs, and large binary fields stored in MongoDB GridFS.
+ * Abstract base class for secure, persistent entities supporting field-level encryption, nested object graphs, and large binary fields stored in a storage backend.
  *
  * ## Features
  * - **Field-level encryption:** Fields annotated with `@Encrypt` are automatically encrypted/decrypted using AES256.
- * - **GridFS integration:** All large ByteArray fields (>1KB) are stored in GridFS, regardless of whether they are annotated with `@Encrypt`. Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
+ * - **Storage integration:** All large ByteArray fields (>1KB) are stored in a storage backend (e.g., S3, GridFS), regardless of whether they are annotated with `@Encrypt`. Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
  * - **Automatic lifecycle:** On creation, `prepare()` encrypts fields and sets the ID. On retrieval, `restore(secret)` restores and decrypts fields.
- * - **Automagic file retrieval:** Any get request for a large file field is intercepted by `EncryptableFieldGetAspect` and the file is automagically loaded from GridFS, so you do not need to manually call a load method for these fields.
+ * - **Automagic file retrieval:** Any get request for a large file field is intercepted by `EncryptableFieldGetAspect` and the file is automagically loaded from the storage backend, so you do not need to manually call a load method for these fields.
  * - **Deterministic ID:** ObjectId is generated from a secret, supporting both standard and HKDF-based strategies.
  * - **Change detection:** Change detection is fully automatic for all persisted fields, including child entities. However, if you use custom objects as persisted fields, those custom objects must implement proper hashCode and equals methods to ensure correct change detection.
- * - **Thread safety:** Uses thread-safe caches for reflection metadata and session-only tracking of GridFS ObjectIds.
+ * - **Thread safety:** Uses thread-safe caches for reflection metadata and session-only tracking of storage ObjectIds.
  * - **List management:** Lists of Encryptable entities are lazy loaded when accessed. Adding an entity to such a list will automatically add it to the database, and removing an entity will also remove it from the database, ensuring consistency between memory and persistent storage.
  *
  * ## Usage
- * - On first saving to MongoDb, automagically calls `prepare()` to encrypt fields and set the ID.
+ * - On first saving to MongoDD, automagically calls `prepare()` to encrypt fields and set the ID.
  * - On retrieval, call `restore(secret)`.
  * - For large files, you do not need to manually call a load method; any get request for the field will trigger automagically loading via the aspect.
  * - The secret is always required for encryption/decryption and is never persisted with the entity.
  * - For lists of Encryptable entities, modifications (add/remove) are automatically reflected in the database.
  *
  * ## Implementation Notes
- * - Only `gridFsFields` is persisted for GridFS tracking; all other caches are transient.
- * - Orphaned GridFS files may remain if fields are removed from the class; consider a cleanup strategy if needed.
+ * - Only `storageFields` is persisted for storage tracking; all other caches are transient.
+ * - Orphaned storage files may remain if fields are removed from the class; consider a cleanup strategy if needed.
  * - Not thread-safe for concurrent updates to the same instance.
  * - The hashCode implementation already covers all persisted variables, so there is no need to hash non-persisted variables.
  *
@@ -56,11 +55,13 @@ import tech.wanion.encryptable.util.extensions.*
  *
  * @property secret High-entropy secret for deterministic ID generation and encryption. Used as path parameter and decryption key. Not persisted.
  * @property id MongoDB CID, deterministically generated from the secret. Abstract, must be implemented by subclasses.
- * @property gridFsFields MutableList of field names for ByteArray fields stored in GridFS.
+ * @property storageFields MutableList of field names for ByteArray fields stored in the storage backend.
  * @property metadata Cached metadata for encrypted fields and ID strategy.
  * @property encryptableFieldMap Map of field names for fields of type Encryptable to their corresponding secret values.
+ * @property encryptableFieldTypeMap Map of field names for fields of type Encryptable to their corresponding actual class types.
  * @property encryptableListFieldMap Map of field names for fields of type List<Encryptable> to their corresponding list of secret values.
- * @property gridFsFieldIdMap Map of field names to their corresponding GridFS ObjectIds for fields stored in GridFS.
+ * @property storageFieldIdMap Map of field names to their corresponding storage ObjectIds for fields stored in the storage backend.
+ * @property errored Indicates whether an error occurred during processing. Used internally to track error states.
  */
 @Suppress("unused", "UNCHECKED_CAST")
 abstract class Encryptable<T: Encryptable<T>> {
@@ -127,6 +128,19 @@ abstract class Encryptable<T: Encryptable<T>> {
          * ```
          */
         inline fun <reified T: Encryptable<T>> String.asSecretOf(encryptableClass: Class<T> = T::class.java): T? = of(this, encryptableClass)
+
+        /**
+         * # getMetadataFor
+         *
+         * Retrieves the cached metadata for the given Encryptable entity instance.
+         *
+         * - The metadata includes information about encrypted fields, ID strategy, and other relevant details for processing the entity.
+         * - This method provides a convenient way to access the metadata without needing to directly reference the companion object's cache.
+         *
+         * @param encryptable The Encryptable entity instance for which to retrieve metadata.
+         * @return Metadata containing encrypted fields and ID strategy for the entity's class.
+         */
+        fun getMetadataFor(encryptable: Encryptable<*>): Metadata = encryptable.metadata
 
         /**
          * getMetadataFor
@@ -212,6 +226,19 @@ abstract class Encryptable<T: Encryptable<T>> {
         fun getUnsafeSecretOf(encryptable: Encryptable<*>): String? = encryptable.secret
 
         /**
+         * # isNew
+         *
+         * Checks if the given Encryptable entity instance is new (not yet persisted).
+         *
+         * - An entity is considered new if its `id` is null, which indicates it has not been persisted to the database.
+         * - This method is used internally to determine whether to perform certain operations (e.g., setting the ID, cascading saves) based on the persistence state of the entity.
+         *
+         * @param encryptable The Encryptable entity instance to check.
+         * @return True if the entity is new (id is null), false otherwise.
+         */
+        fun isNew(encryptable: Encryptable<*>): Boolean = encryptable.id == null
+
+        /**
          * # hasErrored
          *
          * Checks if an error occurred during processing of the given Encryptable entity.
@@ -231,6 +258,15 @@ abstract class Encryptable<T: Encryptable<T>> {
         fun setErrored(encryptable: Encryptable<*>) {
             encryptable.errored = true
         }
+        /**
+         * Updates the entity info in the repository to reflect changes to fields, without modifying the actual persisted data.
+         *
+         * This is used to update the field hash for Storage fields after loading them, so that the persistence layer does not detect them as changed and attempt to re-save them (which would cause issues since they are only references to Storage).
+         *
+         * @param encryptable The Encryptable entity instance being updated.
+         * @param newFieldHash A pair containing the field name and its new hash value.
+         */
+        fun updateEntityInfo(encryptable: Encryptable<*>, newFieldHash: Pair<String, Int>) = encryptable.updateEntityInfo(newFieldHash)
     }
 
     /**
@@ -330,20 +366,19 @@ abstract class Encryptable<T: Encryptable<T>> {
     private var encryptableListFieldMap: MutableMap<String, MutableList<String>> = ConcurrentHashMap()
 
     /**
-     * gridFsFields
+     * storageFields
      *
-     * SynchronizedList of field names that are of type ByteArray and annotated with @Encrypt.
+     * SynchronizedList of field names that are of type ByteArray and were stored in the storage backend or other due to their size exceeding the threshold.
      * Used to optimize serialization/deserialization processes by identifying binary fields.
      */
-    private var gridFsFields: MutableList<String> = Collections.synchronizedList(mutableListOf<String>())
+    private var storageFields: MutableList<String> = Collections.synchronizedList(mutableListOf<String>())
 
     /**
-     * gridFsFieldIdMap
-     *
-     * Map of field names to their corresponding GridFS ObjectIds for fields stored in GridFS.
+     * storageFieldIdMap
+     * Map of field names to their corresponding Storage ID.
      */
     @Transient
-    private val gridFsFieldIdMap = ConcurrentHashMap<String, ObjectId>()
+    private val storageFieldIdMap = ConcurrentHashMap<String, ByteArray>()
 
     /**
      * # metadata
@@ -352,7 +387,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * Used to optimize reflection and encryption/decryption operations.
      */
     @Transient
-    val metadata = getMetadataFor(this::class.java)
+    private val metadata = getMetadataFor(this::class.java)
 
     /**
      * # errored
@@ -381,18 +416,9 @@ abstract class Encryptable<T: Encryptable<T>> {
      * (GridFS files, child entities, etc.) if they're ultimately not needed.
      */
     init {
-        if (isNew())
+        if (isNew(this))
             (metadata.repository as EncryptableMongoRepository<T>).markForCleanup(this as T)
     }
-
-    /**
-     * # isNew
-     *
-     * Indicates whether the entity is new (not yet persisted).
-     *
-     * @return True if the id is null, indicating the entity has not been saved to the database.
-     */
-    fun isNew(): Boolean = this@Encryptable.id == null
 
     /**
      * # prepare
@@ -429,7 +455,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * Restores the entire entity after retrieval from the database, including all persisted fields and those marked with `@Encrypt`.
      *
      * - Sets the secret for this instance and processes all fields, decrypting those marked with `@Encrypt` and restoring all other persisted fields.
-     * - Does not load files from GridFS; fields stored in GridFS are only referenced by their ObjectId and will be lazy loaded on demand.
+     * - Does not load files from the storage backend; fields stored in the storage backend are only referenced by their ObjectId and will be lazy loaded on demand.
      *
      * @param secret The secret string used for restoration and decryption.
      * @throws IllegalStateException if secret is not null.
@@ -443,74 +469,13 @@ abstract class Encryptable<T: Encryptable<T>> {
      *
      * Performs an integrity check on all Encryptable references in this entity and cleans up any missing references.
      *
-     * - First, migrates any legacy references to ID-only storage.
-     * - Next, performs the integrity check to identify missing references.
-     * - Finally, cleans up any missing references from the entity.
-     *
      * @return Map<Class<out Encryptable<*>>, Set<String>> of missing secrets per type that were cleaned up.
      */
     private fun integrityCheckAndCleanUp(): Map<Class<out Encryptable<*>>, Set<String>> {
-        // First, migrate any legacy references to ID-only storage
-        // this will be kept up to version 1.0.7.
-        migrateReferencesToIdOnly()
-        // Next, perform the integrity check
+        // Perform the integrity check
         val missingByType = integrityCheck()
-        // Finally, clean up any missing references
+        // Then, clean up any missing references
         return cleanUpReferences(missingByType)
-    }
-
-    /**
-     * # migrateReferencesToIdOnly
-     *
-     * Detects and fixes legacy reference storage in @Id entities that reference @HKDFId entities.
-     *
-     * **Context**: In versions prior to 1.0.4, @Id entities may have stored the full secret map
-     * when referencing @HKDFId entities. This creates a security risk: if the master secret is
-     * compromised, the secrets of @HKDFId entities could be exposed.
-     *
-     * **Warning:** This migration will be kept up to version 1.0.7.
-     *
-     * **What it does**:
-     * - Scans encryptableFieldMap and encryptableListFieldMap for @HKDFId entity references
-     * - If a reference contains the full secret map, extracts the ID and replaces the reference with ID-only storage
-     * - Maintains cryptographic isolation by preventing @Id entities from storing @HKDFId secrets
-     *
-     * **Scope**: Only applies to @Id entities with references to @HKDFId entities.
-     * @HKDFId entities are unaffected (they don't use master secret).
-     *
-     * **Result**: Automatic migration from secret-based to ID-only reference storage on entity load.
-     */
-    private fun migrateReferencesToIdOnly() {
-        if (metadata.isolated)
-            return
-        // Check single fields
-        encryptableFieldMap.entries.forEach { (fieldName, secret) ->
-            if (secret.length == 22) return@forEach // Likely an @Id reference, skip check
-            val field = metadata.encryptableFields[fieldName] ?: return@forEach
-            val storedType = encryptableFieldTypeMap[fieldName]
-            val type = storedType?.asClass() ?: field.type
-            val id = getMetadataFor(type as Class<out Encryptable<*>>).strategies.getIDFromSecret(secret, type)
-            field.set(this, id.toString())
-        }
-        // Check lists
-        encryptableListFieldMap.entries.forEach { (fieldName, secretList) ->
-            val field = metadata.encryptableListFields[fieldName] ?: return@forEach
-            val type = field.typeParameter() as Class<out Encryptable<*>>
-            var needsReplace = false
-            for (secret in secretList) {
-                if (secret.length != 22) {
-                    needsReplace = true
-                    break
-                }
-            }
-            if (!needsReplace) return@forEach
-            val strategies = getMetadataFor(type).strategies
-            secretList.smartReplaceAll { secret ->
-                if (secret.length == 22) return@smartReplaceAll secret // Likely an @Id reference, skip check
-                val id = strategies.getIDFromSecret(secret, type)
-                return@smartReplaceAll id.toString()
-            }
-        }
     }
 
     /**
@@ -625,17 +590,17 @@ abstract class Encryptable<T: Encryptable<T>> {
      * Reads or writes fields, encrypting or decrypting those marked with `@Encrypt`
      *
      * **ByteArray fields:**
-     * - Large ByteArray fields (>1KB) are stored in GridFS, regardless of `@Encrypt` annotation.
+     * - Large ByteArray fields (>1KB) are stored in the storage backend, regardless of `@Encrypt` annotation.
      * - Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
      *
      * **Supported types:**
      * - `String`, `ByteArray`, and `List<String>` fields.
-     * - For ByteArray fields >1KB, stores encrypted data in GridFS and persists only the ObjectId reference in the entity.
+     * - For ByteArray fields >1KB, stores encrypted data in the storage backend and persists only the ObjectId reference in the entity.
      * - For decryption, restores ObjectId reference for large ByteArray fields, or decrypts directly for smaller fields.
      * - Handles nested objects and lists recursively if annotated with `@Encrypt`.
      *
      * **Automagical loading:**
-     * - For large ByteArray fields, automagic loading is handled by the `EncryptableFieldGetAspect`—any get request for such a field will trigger automatic loading from GridFS, so manual loading is not required.
+     * - For large ByteArray fields, automagic loading is handled by the `EncryptableFieldGetAspect`—any get request for such a field will trigger automatic loading from the storage backend, so manual loading is not required.
      *
      * @param isWrite If `true`, performs a write (encryption); if `false`, performs a read (decryption).
      * @throws IllegalStateException if `secret` is null.
@@ -669,15 +634,15 @@ abstract class Encryptable<T: Encryptable<T>> {
         // Skip remaining processing if not encryptable
         if (!metadata.encryptable)
             return
-        val secret = metadata.strategies.secret(this) ?: throw IllegalStateException("the Secret can't be Null on encryption/decryption.")
+        val secret = metadata.strategies.getSecretFor(this)
 
-        // Process ByteArray fields (GridFS and non-GridFS)
+        // Process ByteArray fields (storage and non-storage)
         metadata.byteArrayFields.entries.forEach { (fieldName, field) ->
             val bytes = field.get(this) as? ByteArray ?: return@forEach
-            val bigArray = bytes.size >= EncryptableConfig.gridFsThreshold
+            val bigArray = bytes.size >= EncryptableConfig.storageThreshold
             val isEncrypt = field.isAnnotationPresent(Encrypt::class.java)
-            val gridFsField = gridFsFields.contains(fieldName)
-            if (!bigArray && !gridFsField) {
+            val storageField = storageFields.contains(fieldName)
+            if (!bigArray && !storageField) {
                 val processed = when (isWrite) {
                     true -> if (isEncrypt) AES256.encrypt(secret, this, bytes) else bytes
                     false -> if (isEncrypt) AES256.decrypt(secret, this, bytes) else bytes
@@ -685,21 +650,20 @@ abstract class Encryptable<T: Encryptable<T>> {
                 field.set(this, processed)
                 return@forEach
             }
-            else if (gridFsField) {
+            else if (storageField) {
                 when (isWrite) {
                     true -> {
-                        if (!gridFsFieldIdMap.containsKey(fieldName))
-                            throw IllegalStateException("Field $fieldName is marked as GridFS but no ObjectId found in map")
-                        field.set(this, gridFsFieldIdMap[fieldName]?.toByteArray())
+                        if (!storageFieldIdMap.containsKey(fieldName))
+                            throw IllegalStateException("Field $fieldName is marked as storage but no Storage found in map")
+                        field.set(this, storageFieldIdMap[fieldName])
                     }
                     false -> {
-                        // On read, just restore the ObjectId reference; actual file loading is lazy via the aspect.
-                        if (bytes.size == 12 && !gridFsFieldIdMap.containsKey(fieldName)) {
-                            val objectId = ObjectId(bytes)
+                        // On read, just restore the reference; actual file loading is lazy via the aspect.
+                        if (bytes.size <= 16 && !storageFieldIdMap.containsKey(fieldName)) {
                             // Store in map for session use.
-                            gridFsFieldIdMap[fieldName] = objectId
-                        } else if (!gridFsFieldIdMap.containsKey(fieldName))
-                            throw IllegalStateException("Field $fieldName is marked as GridFS but no ObjectId found in map")
+                            storageFieldIdMap[fieldName] = bytes
+                        } else if (!storageFieldIdMap.containsKey(fieldName))
+                            throw IllegalStateException("Field $fieldName is marked as storage but no Storage found in map")
                     }
                 }
             }
@@ -765,12 +729,12 @@ abstract class Encryptable<T: Encryptable<T>> {
     /**
      * # beforeRotation
      *
-     * Prepares the entity for secret rotation by deleting all GridFS files and clearing sensitive data.
+     * Prepares the entity for secret rotation by deleting all storage files and clearing sensitive data.
      *
      * - Requires a non-null secret.
-     * - Loads all GridFS fields into memory to ensure they are available before deletion.
-     * - Deletes all GridFS files associated with this entity.
-     * - Clears the GridFS tracking map.
+     * - Loads all storage fields into memory to ensure they are available before deletion.
+     * - Deletes all storage files associated with this entity.
+     * - Clears the storage tracking map.
      * - Sets the secret and id to null to prevent further use.
      *
      * @throws IllegalStateException if the secret is null.
@@ -778,81 +742,32 @@ abstract class Encryptable<T: Encryptable<T>> {
     private fun beforeRotation() {
         requireNotNull(this.secret) { "the Secret can't be Null on before rotation." }
         requireNotNull(this.id) { "the id can't be Null on before rotation." }
-        // load all the GridFS files into memory
-        gridFsFields.forEach { fieldName ->
-            loadGridFsField(fieldName)
+        val storageHandler = getBean(StorageHandler::class.java)
+        // load all the storage files into memory
+        storageFields.parallelForEach { fieldName ->
+            storageHandler.get(this, fieldName)
         }
-        // Delete all GridFS files previously associated with this entity;
+        // Delete all storage files previously associated with this entity;
         // as they will be re-encrypted with the new secret.
-        gridFsFieldIdMap.values.forEach { objectId ->
-            gridFsTemplate.delete(Query(Criteria.where("_id").`is`(objectId)))
+        storageFieldIdMap.parallelForEach { (fieldName, referenceByes) ->
+            val storage = storageHandler.getStorageForField(this, fieldName)
+            val reference = storage.createReference(referenceByes)
+                ?: throw IllegalStateException("No storage reference found for field $fieldName during rotation.")
+            storage.delete(reference)
         }
         // Clear secret and id.
         this.secret = null
         this.id = null
-        // Clear GridFS tracking maps.
+        // Clear storage tracking maps.
         // this is to make the aspect 'think' this is a new entity on next save.
-        gridFsFields.clear()
-        gridFsFieldIdMap.clear()
-    }
-
-    /**
-     * # loadGridFsField
-     *
-     * Loads a ByteArray field stored in GridFS into memory.
-     *
-     * - Only applicable for fields marked as GridFS fields.
-     * - Retrieves the file from GridFS using the stored ObjectId reference.
-     * - Decrypts the data if the field is annotated with `@Encrypt`.
-     * - Updates the field with the loaded ByteArray and updates the entity info to avoid detecting as if had changed.
-     *
-     * @param fieldName The name of the ByteArray field to load from GridFS.
-     * @throws IllegalStateException if the field is not found or if decryption fails.
-     */
-    private fun loadGridFsField(fieldName: String) {
-        // Only proceed if this field is marked as a GridFS field
-        if (!gridFsFields.contains(fieldName))
-            return
-
-        val field = metadata.byteArrayFields[fieldName] ?: throw IllegalStateException("Field $fieldName not found.")
-
-        val bytes = field.get(this) as ByteArray?
-        if (bytes == null || bytes.size != 12) return // Not a GridFS reference or was already loaded.
-
-        // Create the objectId from the 12-byte array
-        val objectId = ObjectId(bytes)
-        // Cache the ObjectId in the map for future referencing
-        gridFsFieldIdMap[fieldName] = objectId
-
-        val encryptField = metadata.encryptable && field.isAnnotationPresent(Encrypt::class.java)
-
-        // If secret is null, means that this entity was loaded without findBySecret,
-        // so we don't have the secret... which means we can't decrypt the field.
-        // instead of throwing an exception, we just return.
-        // why? at least we populated the gridFsFieldIdMap.
-        if (encryptField && this@Encryptable.secret == null)
-            return
-        // if we got here, either the secret isn't null or the field isn't encrypted.
-        // so we continue.
-        var inputStream: InputStream? = null
-        try {
-            val gridFsFile = gridFsTemplate.findOne(Query(Criteria.where("_id").`is`(objectId)))
-            inputStream = gridFsTemplate.getResource(gridFsFile).inputStream
-            val rawBytes = inputStream.readFastBytes()
-            val secret = this.secret ?: if (encryptField) return else String.EMPTY
-            val bytes = if (encryptField) AES256.decrypt(secret, this::class.java, rawBytes) else rawBytes
-            field.set(this, bytes)
-            if (!isNew() && !errored)
-                updateEntityInfo(fieldName to bytes.first4KBChecksum())
-        } finally {
-            inputStream?.close()
-        }
+        storageFields.clear()
+        storageFieldIdMap.clear()
     }
 
     /**
      * Updates the entity, re-encrypting its fields with the provided secret.
      *
-     * - Handles GridFS storage for large ByteArrays and cleans up old files if needed.
+     * - Handles storage for large ByteArrays and cleans up old files if needed.
      * - Only allowed if the entity has encrypted fields.
      */
     private fun update() {
@@ -860,14 +775,11 @@ abstract class Encryptable<T: Encryptable<T>> {
     }
 
     /**
-     * Updates the entity-related metadata for this entity, ensuring consistency between
-     * the in-memory state and the persisted secret info. This prevents unnecessary updates
-     * by synchronizing secret-dependent fields, such as encrypted data or GridFS references.
+     * Updates the entity info in the repository to reflect changes to fields, without modifying the actual persisted data.
      *
-     * Should be called after any mutation to secret-dependent fields, including lazy-loaded fields
-     * and binary fields (e.g., after loadByteField).
+     * This is used to update the field hash for Storage fields after loading them, so that the persistence layer does not detect them as changed and attempt to re-save them (which would cause issues since they are only references to Storage).
      *
-     * This method delegates to the repository to persist the updated entity info.
+     * @param newFieldHash Pair of field name and its new hash value to update in the repository.
      */
     private fun updateEntityInfo(newFieldHash: Pair<String, Int>) = (metadata.repository as EncryptableMongoRepository<T>).updateEntityInfo(this as T, newFieldHash)
 
@@ -876,7 +788,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * **Should be called by the repository when deleting this entity.**
      *
      * Behavior:
-     * - Deletes all GridFS files referenced by this entity, regardless of @PartOf annotation.
+     * - Deletes all storage files referenced by this entity, regardless of @PartOf annotation.
      * - For each secret in encryptableFieldMap, deletes child entities only if the field is annotated with @PartOf.
      * - For each secret in encryptableListFieldMap, deletes child entities only if the field is annotated with @PartOf (composition/cascade delete).
      *
@@ -885,10 +797,10 @@ abstract class Encryptable<T: Encryptable<T>> {
      * - Uses parallel processing as it is IO-bound operations (database deletions).
      */
     private fun cascadeDelete() {
-        populateGridFsFieldIdMap()
+        populateStorageFieldIdMap()
         // GridFs references are stored on field.
         // we can't access the content without the secret, but at least we can delete the files.
-        gridFsFieldIdMap.values.parallelForEach { objectId ->
+        storageFieldIdMap.values.parallelForEach { objectId ->
             gridFsTemplate.delete(Query(Criteria.where("_id").`is`(objectId)))
         }
         // if secret is null, means that this entity was loaded without findBySecret,
@@ -920,21 +832,11 @@ abstract class Encryptable<T: Encryptable<T>> {
             metadata.repository.removeEntityInfo(this.id!!)
     }
 
-    /**
-     * # populateGridFsFieldIdMap
-     *
-     * Populates the gridFsFieldIdMap with ObjectIds for all ByteArray fields stored in GridFS.
-     *
-     * - Iterates over all ByteArray fields in the entity.
-     * - For each field, checks if it contains a 12-byte array (indicating a GridFS reference).
-     * - Converts the byte array to an ObjectId and stores it in the gridFsFieldIdMap.
-     */
-    private fun populateGridFsFieldIdMap() {
+    private fun populateStorageFieldIdMap() {
         metadata.byteArrayFields.entries.parallelForEach { (fieldName, field) ->
             val bytes = field.get(this) as ByteArray?
-            if (bytes == null || bytes.size != 12) return@parallelForEach // Not a GridFS reference or was already loaded.
-            val objectId = ObjectId(bytes)
-            gridFsFieldIdMap[fieldName] = objectId
+            if (bytes == null || bytes.size <= 16) return@parallelForEach // Not a Storage reference or was already loaded.
+            storageFieldIdMap[fieldName] = bytes
         }
     }
 
@@ -953,7 +855,7 @@ abstract class Encryptable<T: Encryptable<T>> {
      * Checks for deep equality between this [Encryptable] instance and another object.
      *
      * This method first checks for referential and class equality, then compares all relevant fields:
-     * - [encryptableListFieldMap], [encryptableFieldMap], [gridFsFields]
+     * - [encryptableListFieldMap], [encryptableFieldMap], [storageFields]
      * - All fields listed in [Metadata.persistedFields] are compared, including deep comparison for [ByteArray] fields.
      *
      * The comparison is null-safe and handles deep equality for arrays and collections.
@@ -1141,7 +1043,7 @@ abstract class Encryptable<T: Encryptable<T>> {
          * | **Master Secret Required** | Yes (if using @Encrypt) | No (independent) |
          * | **Use Case** | Public IDs, shared resources | User accounts, sensitive data |
          */
-        enum class Strategies(val id: (String, Class<out Encryptable<*>>) -> CID, val secret: (Encryptable<out Encryptable<*>>) -> String?) {
+        enum class Strategies(private val id: (String, Class<out Encryptable<*>>) -> CID, private val secret: (Encryptable<out Encryptable<*>>) -> String) {
             /**
              * # ID Strategy (@Id)
              *
@@ -1174,7 +1076,7 @@ abstract class Encryptable<T: Encryptable<T>> {
             HKDFID({ secret, sourceClass ->
                 require(secret.length >= 32) { "For HKDFID strategy, the secret must be at least 32 characters long." }
                 HKDF.deriveFromEntropy(secret, sourceClass, context = "CID", byteLength = 16).cid
-            }, { encryptable -> encryptable.secret });
+            }, { encryptable -> encryptable.secret ?: throw IllegalStateException("Entity secret cannot be null for HKDFID strategy.") });
 
             /**
              * Returns the CID generated from the secret and source class.
@@ -1208,6 +1110,19 @@ abstract class Encryptable<T: Encryptable<T>> {
              */
             fun getIDFromSecret(secret: String, source: Encryptable<*>): CID =
                 getIDFromSecret(secret, source::class.java)
+
+            /**
+             * Returns the secret used for encryption based on the strategy.
+             *
+             * - For ID strategy, returns the master secret (shared).
+             * - For HKDFID strategy, returns the entity's own secret (isolated).
+             *
+             * @param encryptable The Encryptable instance to get the secret for.
+             * @return The secret string used for encryption.
+             *
+             * @throws IllegalStateException if the required secret is not set.
+             */
+            fun getSecretFor(encryptable: Encryptable<*>): String = secret(encryptable)
         }
     }
 }

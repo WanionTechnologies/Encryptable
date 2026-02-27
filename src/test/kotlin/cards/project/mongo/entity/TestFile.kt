@@ -11,10 +11,10 @@ class TestFile : Encryptable<TestFile>() {
 
     var fileName: String? = null
 
-    // Large file WITHOUT @Encrypt - stored in GridFS but not encrypted
+    // Large file WITHOUT @Encrypt - stored in Storage  but not encrypted
     var publicContent: ByteArray? = null
 
-    // Large file WITH @Encrypt - encrypted then stored in GridFS
+    // Large file WITH @Encrypt - encrypted then stored in Storage (GridFS or custom) based on size
     @Encrypt
     var privateContent: ByteArray? = null
 }

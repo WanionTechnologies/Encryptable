@@ -58,8 +58,8 @@ object AES256 {
     /** Length of the authentication tag for AES-GCM in bytes. */
     private const val TAG_LENGTH_BYTES: Int = 16
 
-    /** Helper to get a source name for logging purposes. */
-    private fun sourceNameOf(source: Any): String = (source as? Class<*>)?.simpleName ?: source::class.java.simpleName
+    /** Helper to get a source name. */
+    private fun sourceNameFor(source: Any): String = (source as? Class<*>)?.simpleName ?: source::class.java.simpleName
 
     /**
      * Generates a cryptographically secure Initialization Vector (IV) for AES-GCM.
@@ -166,7 +166,7 @@ object AES256 {
             byteBuffer.put(encryptedData)
             return byteBuffer.array()
         } catch (e: Exception) {
-            val src = sourceNameOf(source)
+            val src = sourceNameFor(source)
             logger.error("Encryption failed - Source: $src, DataSize: ${data.size} bytes, Error: ${e.javaClass.simpleName}")
             if (source is Encryptable<*>)
                 Encryptable.setErrored(source)
@@ -212,7 +212,7 @@ object AES256 {
             }
             return decryptedData
         } catch (e: Exception) {
-            val src = sourceNameOf(source)
+            val src = sourceNameFor(source)
             logger.error("Decryption failed - Source: $src, DataSize: ${data.size} bytes, Error: ${e.javaClass.simpleName}")
             if (source is Encryptable<*>)
                 Encryptable.setErrored(source)

@@ -3,6 +3,7 @@ package cards.project.mongo
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.TestPropertySource
 import tech.wanion.encryptable.util.extensions.randomSecret
+import java.security.SecureRandom
 
 /**
  * Base test class for all Encryptable Framework tests.
@@ -25,5 +26,13 @@ import tech.wanion.encryptable.util.extensions.randomSecret
     ]
 )
 abstract class BaseEncryptableTest {
+    /** Utility method to generate a random secret string for testing purposes. */
     final fun generateSecret(): String = String.randomSecret()
+
+    /** Utility method to create a sample byte array of specified size in KB. */
+    final fun createSampleBytes(sizeInKB: Int): ByteArray {
+        val array = ByteArray(sizeInKB * 1024)
+        SecureRandom().nextBytes(array)
+        return array
+    }
 }

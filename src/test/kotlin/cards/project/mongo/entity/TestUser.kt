@@ -19,6 +19,9 @@ class TestUser : Encryptable<TestUser>() {
     var lastName: String? = null
 
     var publicField: String? = null
+
+    @Encrypt
+    var encryptedBytes: ByteArray? = null
 }
 
 @Repository
