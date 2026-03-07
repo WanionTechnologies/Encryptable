@@ -6,6 +6,14 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 
 ---
 
+## 🤖 For AI Assistants
+
+| Document | Description |
+|---|---|
+| [AI_CONTEXT.md](AI_CONTEXT.md) | **Start here.** Complete project context for AI instances: architecture, design philosophy, innovations, limitations, source map, and patterns. Read before touching any file. |
+
+---
+
 ## 📖 Documentation Overview
 
 | Document                                                             | Description                                                           |
@@ -28,9 +36,11 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 | [LIMITATIONS.md](LIMITATIONS.md)                                     | Known limitations and trade-offs of the framework                     |
 | [MEMORY_HIGIENE_IN_ENCRYPTABLE.md](MEMORY_HIGIENE_IN_ENCRYPTABLE.md) | Advanced memory hygiene strategies and automated buffer wiping        |
 | [MIGRATING_FROM_OTHER_VERSIONS.md](MIGRATING_FROM_OTHER_VERSIONS.md) | Migration guides for upgrading between Encryptable versions           |
+| [MISSED_CALLSITE_BUG_1_0_8.md](MISSED_CALLSITE_BUG_1_0_8.md)         | Security transparency: self-discovered 1.0.8 encryption bug — full post-mortem, root cause, migration, and lessons for every developer |
 | [ORM_FEATURES.md](ORM_FEATURES.md)                                   | ORM-like features for MongoDB relationship management                 |
 | [POWER_OF_TOUCH.md](POWER_OF_TOUCH.md)                               | Practical guide to the touch method: audit, security, automation     |
 | [PREREQUISITES.md](PREREQUISITES.md)                                    | System & runtime requisites: JVM args, minimum Java version, dependencies, and setup |
+| [RECOVERY_CODES.md](RECOVERY_CODES.md)                               | Recovery codes pattern: regaining access after secret loss without breaking transient knowledge |
 | [RESPONDING_TO_CRITICS.md](RESPONDING_TO_CRITICS.md)                 | Addressing common criticisms and misconceptions about Encryptable     |
 | [SECRET_ROTATION.md](SECRET_ROTATION.md)                             | Secret rotation process, compliance, and best practices               |
 | [SECURITY_WITHOUT_AUDIT.md](SECURITY_WITHOUT_AUDIT.md)               | Security analysis without formal audit considerations                 |

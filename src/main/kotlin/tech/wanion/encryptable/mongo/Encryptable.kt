@@ -2,9 +2,6 @@ package tech.wanion.encryptable.mongo
 
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.Transient
-import org.springframework.data.mongodb.core.query.Criteria
-import org.springframework.data.mongodb.core.query.Query
-import org.springframework.data.mongodb.gridfs.GridFsTemplate
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 import java.util.*
@@ -28,7 +25,7 @@ import tech.wanion.encryptable.util.extensions.*
  *
  * ## Features
  * - **Field-level encryption:** Fields annotated with `@Encrypt` are automatically encrypted/decrypted using AES256.
- * - **Storage integration:** All large ByteArray fields (>1KB) are stored in a storage backend (e.g., S3, GridFS), regardless of whether they are annotated with `@Encrypt`. Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
+ * - **Storage integration:** All large ByteArray fields (>16KB) are stored in a storage backend (e.g., S3, GridFS), regardless of whether they are annotated with `@Encrypt`. Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
  * - **Automatic lifecycle:** On creation, `prepare()` encrypts fields and sets the ID. On retrieval, `restore(secret)` restores and decrypts fields.
  * - **Automagic file retrieval:** Any get request for a large file field is intercepted by `EncryptableFieldGetAspect` and the file is automagically loaded from the storage backend, so you do not need to manually call a load method for these fields.
  * - **Deterministic ID:** ObjectId is generated from a secret, supporting both standard and HKDF-based strategies.
@@ -51,7 +48,7 @@ import tech.wanion.encryptable.util.extensions.*
  *
  * ## Limitations
  * - MongoDB BSON document size limit is 16MB. Ensure the total size of the entity (including all encrypted fields and nested objects) does not exceed this limit.
- * - Cycle detection is INTENTIONALLY NOT implemented. Deep or cyclic object graphs may cause stack overflow or infinite recursion.
+ * - Cycle detection is INTENTIONALLY NOT implemented. Deep or cyclic object graphs will cause stack overflow or infinite recursion.
  *
  * @property secret High-entropy secret for deterministic ID generation and encryption. Used as path parameter and decryption key. Not persisted.
  * @property id MongoDB CID, deterministically generated from the secret. Abstract, must be implemented by subclasses.
@@ -89,14 +86,6 @@ abstract class Encryptable<T: Encryptable<T>> {
          * Thread-safe cache for fields annotated with `@Encrypt` in non-Encryptable classes.
          */
         private val encryptFieldMetadataMap = ConcurrentHashMap<Class<*>, List<Field>>()
-
-        /**
-         * gridFsTemplate
-         *
-         * GridFsTemplate for storing/retrieving large encrypted files in MongoDB GridFS.
-         * Used for fields of type ByteArray that exceed 1KB in size.
-         */
-        private val gridFsTemplate: GridFsTemplate = getBean(GridFsTemplate::class.java)
 
         /**
          * # of
@@ -224,6 +213,22 @@ abstract class Encryptable<T: Encryptable<T>> {
          * @see getSecretOf For getting the encryption secret (returns master secret for @Id entities)
          */
         fun getUnsafeSecretOf(encryptable: Encryptable<*>): String? = encryptable.secret
+
+        /**
+         * # canDecrypt
+         *
+         * Checks if the given Encryptable entity instance has the necessary information to perform decryption.
+         *
+         * - For `@HKDFId` strategy: Checks if the entity's own secret is set (non-null).
+         * - For `@Id` strategy: Checks if the master secret is configured and available.
+         *
+         * @param encryptable The Encryptable entity instance to check.
+         * @return True if decryption can be performed, false otherwise.
+         */
+        fun canDecrypt(encryptable: Encryptable<*>): Boolean = when (encryptable.metadata.strategies) {
+            Metadata.Strategies.HKDFID -> encryptable.secret != null
+            Metadata.Strategies.ID -> MasterSecretHolder.masterSecretIsSet()
+        }
 
         /**
          * # isNew
@@ -421,6 +426,33 @@ abstract class Encryptable<T: Encryptable<T>> {
     }
 
     /**
+     * # touch
+     *
+     * Updates access-related fields (such as lastAccess) to reflect the latest interaction with the entity.
+     *
+     * This method is called after restore() to record that the entity was accessed or loaded.
+     * For example, you can update a lastAccess timestamp or other audit fields here.
+     *
+     * Fields are automatically tracked and persisted, so to update a field (e.g., lastAccess),
+     * - **you only need to set its new value; the persistence layer will handle saving it.**
+     *
+     * ## Advanced Usage
+     *
+     * The `touch` method can also be extended to trigger automated security or audit actions. For instance:
+     * - Sending notifications or alerts when a user logs in or accesses sensitive data.
+     * - Logging access events for compliance or forensic analysis.
+     * - Initiating multifactor authentication or other security workflows.
+     *
+     * By customizing `touch` in your entity subclasses, you can integrate real-time monitoring, messaging, or audit logic directly into the entity lifecycle, ensuring that every access is tracked and actionable for security and compliance purposes.
+     *
+     * Override this method in subclasses to customize which fields are updated or which actions are triggered.
+     */
+    open fun touch() {
+        // Example: lastAccess = Instant.now()
+        // Override in subclasses to update specific fields or trigger security/audit actions
+    }
+
+    /**
      * # prepare
      *
      * Prepares the entire entity before persistence, setting the ID and processing all persisted fields.
@@ -440,7 +472,7 @@ abstract class Encryptable<T: Encryptable<T>> {
         // Set ID first, before processing lists/nested entities that may need to reference this entity
         this.id = metadata.strategies.getIDFromSecret(secret, this)
         this.metadata.encryptableListFields.forEach { (fieldName, field) ->
-            val list: List<Encryptable<*>> = this.getField(fieldName)
+            val list: List<Encryptable<*>> = this.readField(fieldName)
             if (list is EncryptableList) return@forEach
             if (encryptableListFieldMap.containsKey(fieldName)) return@forEach
             val encryptableList = EncryptableList(fieldName, this, list)
@@ -452,13 +484,14 @@ abstract class Encryptable<T: Encryptable<T>> {
     /**
      * # restore
      *
-     * Restores the entire entity after retrieval from the database, including all persisted fields and those marked with `@Encrypt`.
+     * Restores the entire entity after retrieval, processing all persisted fields and decrypting as needed.
      *
-     * - Sets the secret for this instance and processes all fields, decrypting those marked with `@Encrypt` and restoring all other persisted fields.
-     * - Does not load files from the storage backend; fields stored in the storage backend are only referenced by their ObjectId and will be lazy loaded on demand.
+     * - Requires a non-null secret to perform decryption.
+     * - Processes all persisted fields, decrypting those marked with `@Encrypt` as needed.
+     * - For fields that are lists of entities, ensures they are properly initialized and processed.
      *
-     * @param secret The secret string used for restoration and decryption.
-     * @throws IllegalStateException if secret is not null.
+     * @param secret The secret string used for decryption.
+     * @throws IllegalStateException if the secret is null.
      */
     private fun restore(secret: String) {
         withSecret(secret).processFields()
@@ -560,42 +593,15 @@ abstract class Encryptable<T: Encryptable<T>> {
     }
 
     /**
-     * # touch
-     *
-     * Updates access-related fields (such as lastAccess) to reflect the latest interaction with the entity.
-     *
-     * This method is called after restore() to record that the entity was accessed or loaded.
-     * For example, you can update a lastAccess timestamp or other audit fields here.
-     *
-     * Fields are automatically tracked and persisted, so to update a field (e.g., lastAccess),
-     * - **you only need to set its new value; the persistence layer will handle saving it.**
-     *
-     * ## Advanced Usage
-     *
-     * The `touch` method can also be extended to trigger automated security or audit actions. For instance:
-     * - Sending notifications or alerts when a user logs in or accesses sensitive data.
-     * - Logging access events for compliance or forensic analysis.
-     * - Initiating multifactor authentication or other security workflows.
-     *
-     * By customizing `touch` in your entity subclasses, you can integrate real-time monitoring, messaging, or audit logic directly into the entity lifecycle, ensuring that every access is tracked and actionable for security and compliance purposes.
-     *
-     * Override this method in subclasses to customize which fields are updated or which actions are triggered.
-     */
-    open fun touch() {
-        // Example: lastAccess = Instant.now()
-        // Override in subclasses to update specific fields or trigger security/audit actions
-    }
-
-    /**
      * Reads or writes fields, encrypting or decrypting those marked with `@Encrypt`
      *
      * **ByteArray fields:**
-     * - Large ByteArray fields (>1KB) are stored in the storage backend, regardless of `@Encrypt` annotation.
+     * - Large ByteArray fields (>16KB) are stored in the storage backend, regardless of `@Encrypt` annotation.
      * - Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
      *
      * **Supported types:**
      * - `String`, `ByteArray`, and `List<String>` fields.
-     * - For ByteArray fields >1KB, stores encrypted data in the storage backend and persists only the ObjectId reference in the entity.
+     * - For ByteArray fields >16KB, stores encrypted data in the storage backend and persists only the ObjectId reference in the entity.
      * - For decryption, restores ObjectId reference for large ByteArray fields, or decrypts directly for smaller fields.
      * - Handles nested objects and lists recursively if annotated with `@Encrypt`.
      *
@@ -612,28 +618,83 @@ abstract class Encryptable<T: Encryptable<T>> {
      * ```
      */
     private fun processFields(isWrite: Boolean = false) {
-        // Process Encryptable fields
-        // this MUST be done before processing normal `encryptableFieldMap` en/decryption fields,
-        metadata.encryptableFields.entries.forEach { (fieldName, field) ->
-            val innerEncryptable = this.getField<Encryptable<*>?>(fieldName)
-            // Ensures that inner Encryptable objects added during construction are registered in the map; without this, they would not be persisted.
-            if (innerEncryptable != null && !encryptableFieldMap.contains(fieldName)) {
+        if (isWrite) {
+            metadata.encryptableFields.entries.forEach { (fieldName, field) ->
+                val innerEncryptable = field.get(this) as? Encryptable<*> ?: return@forEach
+                val simpleReference = field.isAnnotationPresent(SimpleReference::class.java)
+                // If it is an isolated Entity and is not annotated with @SimpleReference, we store the secret directly;
+                // otherwise, we store the ID (which is derived from the secret).
                 encryptableFieldMap[fieldName] =
-                    if (this.metadata.isolated) innerEncryptable.secret
+                    if (this.metadata.isolated && !simpleReference) innerEncryptable.secret
                         ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its secret set.")
                     else innerEncryptable.id?.toString()
                         ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its id set.")
                 if (innerEncryptable.javaClass != field.type)
                     encryptableFieldTypeMap[fieldName] = innerEncryptable.javaClass.name
+                // Clear all Encryptable fields.
+                // they can't be saved as they exist on their own collection.
+                field.set(this, null)
             }
-            // Clear all encryptable fields.
-            // they can't be saved as they exist on their own collection.
-            field.set(this, null)
+
+            metadata.encryptableListFields.entries.forEach { (fieldName, field) ->
+                val innerEncryptableList = field.get(this) as? List<*> ?: return@forEach
+                encryptableListFieldMap[fieldName] = Collections.synchronizedList(mutableListOf())
+                innerEncryptableList.forEachIndexed { index, item ->
+                    if (item !is Encryptable<*>)
+                        throw IllegalStateException("Field \"$fieldName\" is annotated as a List of Encryptables but contains a non-Encryptable item at index $index.")
+                    val simpleReference = field.isAnnotationPresent(SimpleReference::class.java)
+                    val secretOrId =
+                        if (this.metadata.isolated && !simpleReference) item.secret
+                            ?: throw IllegalStateException("Inner Encryptable at index $index in list \"$fieldName\" must have its secret set.")
+                        else item.id?.toString()
+                            ?: throw IllegalStateException("Inner Encryptable at index $index in list \"$fieldName\" must have its id set.")
+                    encryptableListFieldMap[fieldName]?.add(secretOrId)
+                }
+                // Clear all List<Encryptable<*>> fields.
+                // they can't be saved as they exist on their own collection.
+                field.set(this, null)
+            }
+        }
+
+        if (metadata.isolated) {
+            val secret = metadata.strategies.getSecretFor(this)
+
+            this.encryptableFieldMap.entries.forEach { entry ->
+                val fieldName = entry.key
+                val field = metadata.encryptableFields[fieldName]
+                    ?: throw IllegalStateException("No field found for name \"$fieldName\" in metadata. This should never happen.")
+                if (field.isAnnotationPresent(SimpleReference::class.java))
+                    return@forEach
+                val innerSecret = entry.value
+                entry.setValue(
+                    if (isWrite)
+                        AES256.encrypt(secret, this@Encryptable, innerSecret)
+                    else
+                        AES256.decrypt(secret, this@Encryptable, innerSecret)
+                )
+            }
+
+            this.encryptableListFieldMap.entries.forEach { entry ->
+                val fieldName = entry.key
+                val field = metadata.encryptableListFields[fieldName]
+                    ?: throw IllegalStateException("No field found for name \"$fieldName\" in metadata. This should never happen.")
+                if (field.isAnnotationPresent(SimpleReference::class.java))
+                    return@forEach
+                val list = entry.value
+                list.smartReplaceAll {
+                    if (isWrite)
+                        AES256.encrypt(secret, this@Encryptable, it)
+                    else
+                        AES256.decrypt(secret, this@Encryptable, it)
+                }
+            }
         }
 
         // Skip remaining processing if not encryptable
         if (!metadata.encryptable)
             return
+
+        // The secret is required for encryption/decryption operations.
         val secret = metadata.strategies.getSecretFor(this)
 
         // Process ByteArray fields (storage and non-storage)
@@ -654,37 +715,19 @@ abstract class Encryptable<T: Encryptable<T>> {
                 when (isWrite) {
                     true -> {
                         if (!storageFieldIdMap.containsKey(fieldName))
-                            throw IllegalStateException("Field $fieldName is marked as storage but no Storage found in map")
+                            throw IllegalStateException("Field $fieldName is marked as storage but no Storage was found in map")
                         field.set(this, storageFieldIdMap[fieldName])
                     }
                     false -> {
-                        // On read, just restore the reference; actual file loading is lazy via the aspect.
-                        if (bytes.size <= 16 && !storageFieldIdMap.containsKey(fieldName)) {
-                            // Store in map for session use.
+                        // On read, restore the reference bytes into the map for lazy loading.
+                        // The reference may be a single backend reference (e.g. 12-byte ObjectId, 16-byte CID)
+                        // or a @Sliced concatenated reference (4-byte length header + N × refLen bytes).
+                        // Either way, any bytes found in the field at restore
+                        // time ARE the stored reference.
+                        if (!storageFieldIdMap.containsKey(fieldName))
                             storageFieldIdMap[fieldName] = bytes
-                        } else if (!storageFieldIdMap.containsKey(fieldName))
-                            throw IllegalStateException("Field $fieldName is marked as storage but no Storage found in map")
                     }
                 }
-            }
-        }
-
-        this.encryptableFieldMap.entries.forEach { entry ->
-            val value = entry.value
-            entry.setValue(
-                if (isWrite)
-                    AES256.encrypt(secret, this@Encryptable, value)
-                else
-                    AES256.decrypt(secret, this@Encryptable, value)
-            )
-        }
-
-        this.encryptableListFieldMap.values.forEach { list ->
-            list.smartReplaceAll {
-                if (isWrite)
-                    AES256.encrypt(secret, this@Encryptable, it)
-                else
-                    AES256.decrypt(secret, this@Encryptable, it)
             }
         }
 
@@ -749,11 +792,8 @@ abstract class Encryptable<T: Encryptable<T>> {
         }
         // Delete all storage files previously associated with this entity;
         // as they will be re-encrypted with the new secret.
-        storageFieldIdMap.parallelForEach { (fieldName, referenceByes) ->
-            val storage = storageHandler.getStorageForField(this, fieldName)
-            val reference = storage.createReference(referenceByes)
-                ?: throw IllegalStateException("No storage reference found for field $fieldName during rotation.")
-            storage.delete(reference)
+        storageFieldIdMap.keys.parallelForEach { fieldName ->
+            storageHandler.delete(this, fieldName)
         }
         // Clear secret and id.
         this.secret = null
@@ -798,10 +838,11 @@ abstract class Encryptable<T: Encryptable<T>> {
      */
     private fun cascadeDelete() {
         populateStorageFieldIdMap()
-        // GridFs references are stored on field.
+        val storageHandler = getBean(StorageHandler::class.java)
+        // Storage references are stored on field.
         // we can't access the content without the secret, but at least we can delete the files.
-        storageFieldIdMap.values.parallelForEach { objectId ->
-            gridFsTemplate.delete(Query(Criteria.where("_id").`is`(objectId)))
+        storageFieldIdMap.keys.parallelForEach { fieldName ->
+            storageHandler.delete(this, fieldName)
         }
         // if secret is null, means that this entity was loaded without findBySecret,
         // which means all the fields are still encrypted.
@@ -816,7 +857,7 @@ abstract class Encryptable<T: Encryptable<T>> {
             val storedType = encryptableFieldTypeMap[fieldName]
             val actualType = storedType?.asClass() ?: field.type
             val repo = EncryptableContext.getRepositoryForEncryptableClass(actualType as Class<out Encryptable<*>>)
-            repo.deleteBySecret(secret)
+            repo.deleteBySecret(secret, true)
         }
         // Delete all entities referenced in encryptableListFieldMap, only if field is annotated with @PartOf
         encryptableListFieldMap.parallelForEach { (fieldName, secretList) ->
@@ -825,7 +866,7 @@ abstract class Encryptable<T: Encryptable<T>> {
             val elementType = field.typeParameter()
             val repo = EncryptableContext.getRepositoryForEncryptableClass(elementType as Class<out Encryptable<*>>)
             secretList.parallelForEach { secret ->
-                repo.deleteBySecret(secret)
+                repo.deleteBySecret(secret, true)
             }
         }
         if (this.id != null)

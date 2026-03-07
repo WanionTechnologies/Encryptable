@@ -1,4 +1,4 @@
-package cards.project.mongo.storage
+package cards.project.storage
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -22,6 +22,9 @@ class MemoryStorageImpl: IStorage<CID> {
     /** In-memory storage using a concurrent hash map to store byte arrays associated with their corresponding CIDs. */
     private val memoryStorage = ConcurrentHashMap<CID, ByteArray>()
 
+    /** The expected length of a CID reference in bytes, which is 16 bytes. */
+    override val referenceLength: Int = 16
+
     /** Creates a reference (CID) from the given bytes, or returns null if the input is null. */
     override fun createReference(referenceBytes: ByteArray?): CID? = referenceBytes?.cid
 
@@ -29,7 +32,7 @@ class MemoryStorageImpl: IStorage<CID> {
     override fun bytesFromReference(reference: CID): ByteArray = reference.bytes
 
     /** Stores the given bytes and returns a reference (CID) to it. */
-    override fun create(bytesToStore: ByteArray): CID {
+    override fun create(fieldMetadata: String, bytesToStore: ByteArray): CID {
         val reference = CID.random()
         logger.info("Creating ${bytesToStore.first4KBChecksum()} with Reference: $reference.")
         memoryStorage[reference] = bytesToStore
@@ -37,14 +40,14 @@ class MemoryStorageImpl: IStorage<CID> {
     }
 
     /** For testing purposes, we can add a method to read the stored bytes by reference */
-    override fun read(reference: CID): ByteArray? {
+    override fun read(fieldMetadata: String, reference: CID): ByteArray? {
         val bytes = memoryStorage[reference]
         logger.info("Read ${bytes?.first4KBChecksum()}")
         return bytes
     }
 
     /** For testing purposes, we can add a method to clear the storage */
-    override fun delete(reference: CID) {
+    override fun delete(fieldMetadata: String, reference: CID) {
         logger.info("Deleting Reference: $reference.")
         memoryStorage.remove(reference)
     }

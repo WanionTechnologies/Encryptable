@@ -6,7 +6,7 @@ import ch.qos.logback.core.ConsoleAppender
 import org.slf4j.LoggerFactory
 import org.springframework.boot.CommandLineRunner
 import org.springframework.stereotype.Component
-import tech.wanion.encryptable.mongo.migration.Migration107to108
+import tech.wanion.encryptable.mongo.migration.Migration108to109
 import kotlin.system.exitProcess
 
 @Component
@@ -93,6 +93,9 @@ class EncryptableRunner : CommandLineRunner {
         logger.info("- Storage Threshold is set to ${EncryptableConfig.storageThreshold} bytes.")
         val migrationStatus = if (EncryptableConfig.migration) "enabled" else "disabled"
         logger.info("- Migration is $migrationStatus.")
+        logger.info("- ⚠️ Version 1.0.9 requires migration for:")
+        logger.info("-   @Id entities with nested List<out Encryptable>.")
+        logger.info("- See CHANGELOG.md for more details and new features.")
         logger.info(line)
         if (!EncryptableConfig.migration || isTestEnvironment())
             return
@@ -104,16 +107,19 @@ class EncryptableRunner : CommandLineRunner {
 
     /** Performs database migration if needed */
     private fun migrate() {
-        val migration = Migration107to108()
-        if (!migration.shouldMigrate()) {
-            logger.info("- No migration needed. Current database is compatible with this version of Encryptable.")
-            return
+        val migrations = listOf(Migration108to109())
+        var anyRan = false
+        migrations.forEach { migration ->
+            if (!migration.shouldMigrate()) return@forEach
+            anyRan = true
+            logger.info("- Encryptable is Starting Migration from version ${migration.fromVersion()} to version ${migration.toVersion()}.")
+            logger.info("- Migration will update the database schema and data as needed to ensure compatibility with this version of Encryptable.")
+            logger.info("- Do not stop the application until migration is complete. This may take some time depending on the size of your database.")
+            migration.migrateSchema()
+            migration.migrateData()
+            logger.info("- Migration ${migration.fromVersion()} → ${migration.toVersion()} completed.")
         }
-        logger.info("- Encryptable is Starting Migration from version ${migration.fromVersion()} to version ${migration.toVersion()}.")
-        logger.info("- Migration will update the database schema and data as needed to ensure compatibility with this version of Encryptable.")
-        logger.info("- Do not stop the application until migration is complete. This may take some time depending on the size of your database.")
-        migration.migrateSchema()
-        migration.migrateData()
-        logger.info("- Migration completed.")
+        if (!anyRan)
+            logger.info("- No migration needed. Current database is compatible with this version of Encryptable.")
     }
 }

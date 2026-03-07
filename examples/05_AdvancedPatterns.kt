@@ -422,7 +422,7 @@ class AdvancedPatternsExample(
         println("2. Only access large ByteArray fields when needed (lazy loading)")
         println("3. Leverage parallel processing (automatic in framework)")
         println("4. Keep documents under 16MB BSON limit")
-        println("5. Use GridFS for files >1KB")
+        println("5. Use GridFS for files >16KB")
         println("6. Implement pagination for large result sets")
 
         println("\n❌ DON'T:")

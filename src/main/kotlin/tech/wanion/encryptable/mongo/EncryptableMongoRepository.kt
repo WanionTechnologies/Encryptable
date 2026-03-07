@@ -90,28 +90,6 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
     fun saveWithSecret(entity: T, secret: String): T = save(entity.withSecret(secret))
 
     /**
-     * Hook method called after an entity is saved to the database.
-     *
-     * This method can be overridden to perform additional actions after an entity is persisted,
-     * such as logging, updating related data, or triggering events.
-     *
-     * ### Parameters
-     * - `entity`: The entity instance that was just saved.
-     */
-    fun afterSave(entity: T) {}
-
-    /**
-     * Hook method called after multiple entities are saved to the database.
-     *
-     * This method can be overridden to perform additional actions after multiple entities are persisted,
-     * such as logging, updating related data, or triggering events.
-     *
-     * ### Parameters
-     * - `entities`: Iterable of entity instances that were just saved.
-     */
-    fun afterSaveAll(entities: Iterable<T>) {}
-
-    /**
      * Checks if an entity exists by its secret string.
      *
      * ### Parameters

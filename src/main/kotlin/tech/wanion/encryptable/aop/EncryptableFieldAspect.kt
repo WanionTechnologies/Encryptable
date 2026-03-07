@@ -11,7 +11,7 @@ import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.mongo.EncryptableMongoRepository
 import tech.wanion.encryptable.mongo.PartOf
 import tech.wanion.encryptable.util.extensions.asClass
-import tech.wanion.encryptable.util.extensions.getField
+import tech.wanion.encryptable.util.extensions.readField
 import java.lang.reflect.Field
 
 /**
@@ -48,11 +48,11 @@ class EncryptableFieldAspect {
         val field = Encryptable.getMetadataFor(targetEncryptable).encryptableFields[fieldName] ?: return
         val currentValue = field.get(targetEncryptable)
         if (currentValue == null) {
-            val encryptableFieldMap = targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldMap")
+            val encryptableFieldMap = targetEncryptable.readField<MutableMap<String, String>>("encryptableFieldMap")
             val secret = encryptableFieldMap[fieldName] ?: return // No secret, nothing to load.
 
             val encryptableFieldTypeMap =
-                targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldTypeMap")
+                targetEncryptable.readField<MutableMap<String, String>>("encryptableFieldTypeMap")
             val storedType = encryptableFieldTypeMap[fieldName]
             val actualType = if (storedType != null)
                 storedType.asClass() as Class<out Encryptable<*>>
@@ -94,8 +94,8 @@ class EncryptableFieldAspect {
         val field = Encryptable.getMetadataFor(targetEncryptable).encryptableFields[fieldName] ?: return joinPoint.proceed()
         val fieldType = field.type
 
-        val encryptableFieldMap = targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldMap")
-        val encryptableFieldTypeMap = targetEncryptable.getField<MutableMap<String, String>>("encryptableFieldTypeMap")
+        val encryptableFieldMap = targetEncryptable.readField<MutableMap<String, String>>("encryptableFieldMap")
+        val encryptableFieldTypeMap = targetEncryptable.readField<MutableMap<String, String>>("encryptableFieldTypeMap")
 
         var oldEntity = field.get(targetEncryptable) as Encryptable<*>? // Current value before setting new one
 

@@ -154,7 +154,7 @@ Before deploying, ask yourself:
 
 ### 📚 Related Documentation
 
-- [Request-Scoped Knowledge Authentication Patterns](https://github.com/WanionTechnologies/Encryptable/blob/main/docs/concepts/ZERO_KNOWLEDGE_AUTH.md)
-- [Request-Scoped Knowledge 2FA Implementation](https://github.com/WanionTechnologies/Encryptable/blob/main/docs/concepts/ZERO_KNOWLEDGE_2FA.md)
-- [User-Centric Security Model](https://github.com/WanionTechnologies/Encryptable/blob/main/docs/concepts/USER_CENTRIC_SECURITY.md)
+- [Transient Knowledge Authentication](concepts/TRANSIENT_KNOWLEDGE_AUTH.md)
+- [Recovery Codes](RECOVERY_CODES.md)
+- [Memory Hygiene in Encryptable](MEMORY_HIGIENE_IN_ENCRYPTABLE.md)
 

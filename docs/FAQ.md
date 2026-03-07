@@ -660,7 +660,7 @@ AES-256-GCM is battle-tested, hardware-accelerated, and trusted by governments w
 **Migration path:**
 ```kotlin
 // Convert existing String IDs to CID
-val stringId: String = "507f1f77bcf86cd799439011"
+val stringId = "507f1f77bcf86cd799439011"
 val cid: CID = stringId.cid  // Extension function
 
 // Or generate new CIDs
@@ -936,7 +936,7 @@ class User : Encryptable<User>() {
 // Typical overhead: 50-200 bytes per entity
 ```
 
-**3. GridFS files (>1KB):**
+**3. GridFS files (>16KB):**
 - Negligible overhead (28 bytes per file regardless of size)
 - 10 MB file → 10 MB + 28 bytes (~0.0003% overhead)
 

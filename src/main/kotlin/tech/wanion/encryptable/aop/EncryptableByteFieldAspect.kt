@@ -9,6 +9,7 @@ import org.aspectj.lang.annotation.Pointcut
 import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.extensions.getBean
+import java.util.Collections
 
 /**
  * # EncryptableFieldGetAspect
@@ -22,6 +23,8 @@ class EncryptableByteFieldAspect {
         private val setMethod = StorageHandler::class.java.getDeclaredMethod("set",
             Encryptable::class.java, String::class.java, ByteArray::class.java
         ).also { it.isAccessible = true }
+
+        private val storageFieldsField = Encryptable::class.java.getDeclaredField("storageFields").also { it.isAccessible = true }
     }
 
     /** StorageHandler instance for handling storage operations related to byte[] fields. */
@@ -46,6 +49,9 @@ class EncryptableByteFieldAspect {
         val encryptable = joinPoint.target as? Encryptable<*> ?: return
         // Convert getter name to field name: getAvatar -> avatar
         val fieldName = methodName.removePrefix("get").replaceFirstChar { it.lowercase() }
+
+        // Ensure the storageFields list is initialized before accessing it in the storage handler
+        ensureStorageInitialized(encryptable)
 
         storageHandler.get(encryptable, fieldName)
     }
@@ -73,11 +79,21 @@ class EncryptableByteFieldAspect {
 
         val fieldName = joinPoint.signature.name
 
+        // Ensure the storageFields list is initialized before accessing it in the storage handler
+        ensureStorageInitialized(encryptable)
+
         // Get the new value being set
         val newBytes = joinPoint.args[0] as? ByteArray?
 
         setMethod.invoke(storageHandler, encryptable, fieldName, newBytes)
 
         return null
+    }
+
+    /** Ensures that the storageFields list in the Encryptable instance is initialized. If it is null, it initializes it with a synchronized list. */
+    private fun ensureStorageInitialized(encryptable: Encryptable<*>) {
+        val storageFields = storageFieldsField.get(encryptable)
+        if (storageFields == null)
+            storageFieldsField.set(encryptable, Collections.synchronizedList(mutableListOf<String>()))
     }
 }

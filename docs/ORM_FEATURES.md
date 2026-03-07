@@ -79,9 +79,79 @@ class InvoiceItem : Encryptable<InvoiceItem>() {
 
 ---
 
+## 🔗 The `@SimpleReference` Annotation
+
+The `@SimpleReference` annotation changes how the parent stores a reference to a nested `Encryptable` child.
+
+### Default behaviour on `@HKDFId` parents
+
+On a parent with `@HKDFId`, every nested `Encryptable` field or `List<Encryptable>` field normally stores the **child's secret**, encrypted with the parent's own secret. This gives the parent full, secure access to the child's decryption key and is the strongest coupling available.
+
+### What `@SimpleReference` does
+
+Adding `@SimpleReference` to a field tells the framework to store only the **child's ID** (plaintext, unencrypted) instead of the child's secret. This is identical to what always happens on `@Id` parents.
+
+| Parent strategy | Field annotation | What is stored |
+|---|---|---|
+| `@HKDFId` | *(none)* | Child secret, encrypted with parent secret |
+| `@HKDFId` | `@SimpleReference` | Child ID, **plaintext** |
+| `@Id` | *(none)* | Child ID, **plaintext** |
+| `@Id` | `@SimpleReference` | Child ID, **plaintext** (same — no effect on `@Id`) |
+
+### Load, Decrypt, and Delete behavior
+
+Because only the child's ID is stored, the parent has limited access to the child:
+
+| Operation | Possible? | Notes |
+|---|---|---|
+| **Load** | ✅ Yes | Child entity is fetched by its stored ID. Non-encrypted fields are readable. |
+| **Decrypt** | ❌ No | Parent does not hold the child's secret. `@Encrypt` fields on the loaded child return raw ciphertext; the entity is marked errored for those fields. |
+| **Delete** | ✅ Yes | Possession of the ID is sufficient for deletion. For single `Encryptable` fields, works via `@PartOf` cascade. For `List<Encryptable>` fields, the list field itself **must** be annotated with `@PartOf` — without it, removing items from the list will not delete the child entities. |
+
+The child's secret must be obtained **independently** (e.g., from the authenticated user's session or a separate `findBySecret` call) if decryption is needed.
+
+### When to use it
+
+- The child is a **shared / referenced entity** whose secret you don't own and cannot propagate.
+- You want a navigable reference (lookup by ID) without binding the child's secret to the parent.
+- The relationship is by identity only — the parent can locate and optionally delete the child, but cannot decrypt its encrypted content through this reference alone.
+
+### Combining with `@PartOf`
+
+`@SimpleReference` and `@PartOf` can be used together. Cascade delete still works — the parent will delete the child entity when the parent is deleted — but the stored reference remains a plain ID, not an encrypted secret.
+
+> **Note:** For `List<Encryptable>` fields, `@PartOf` is **required** on the field itself if you want removing items from the list (or deleting the parent) to cascade-delete the child entities. Without `@PartOf`, the list tracks references only — no deletion occurs.
+
+```kotlin
+@Document(collection = "orders")
+class Order : Encryptable<Order>() {
+    @HKDFId
+    override var id: CID? = null
+
+    // Owned child — secret stored encrypted → framework can decrypt child automatically
+    @PartOf
+    var invoice: Invoice? = null
+
+    // Shared reference — only the ID is stored
+    // Parent can load and delete the address, but cannot decrypt its @Encrypt fields
+    @SimpleReference
+    var deliveryAddress: Address? = null
+
+    // List: @PartOf required for cascade delete to work on list items
+    // @SimpleReference: stores only the child's ID, not its secret
+    @PartOf
+    @SimpleReference
+    var auditLogs: List<AuditEntry> = listOf()
+}
+```
+
+> **⚠️ Important:** When a field is annotated with `@SimpleReference`, the parent entity **can load and delete** the child but **cannot decrypt** its `@Encrypt` fields. The child's secret must be obtained independently (e.g., from the request context or a separate `findBySecret` call) if you need to read encrypted content.
+
+---
+
 ## 🎭 Polymorphic Nested Entities
 
-**Industry-First Feature:** Encryptable supports **100% transparent polymorphism** for nested `Encryptable<*>` fields—no annotations, no discriminators, no configuration required.
+**Novel Feature:** To our knowledge, Encryptable is the first MongoDB ODM to support **fully transparent polymorphism** for nested `Encryptable<*>` fields — no annotations, no discriminators, no configuration required.
 
 ### **How It Works**
 
@@ -229,11 +299,12 @@ val entity = repository.findBySecretOrNull(secret)!!
 | One-to-Many            | Manual refs    | Yes           | ✅ Yes (list field)   |
 | Many-to-Many           | Manual refs    | Yes           | ✅ Yes (links/refs)   |
 | Cascade Delete         | Manual         | Yes           | ✅ Yes (`@PartOf`)    |
+| ID-only reference      | Manual         | ⚠️ `@ManyToOne` (no secret) | ✅ Yes (`@SimpleReference`) |
 | Polymorphic Entities   | Manual         | ⚠️ Needs `@Inheritance` | ✅ Yes (transparent)  |
 | Change Detection       | Manual         | ✅ Yes (dirty tracking) | ✅ Yes (automatic)   |
 | Partial Field Updates  | Manual         | ✅ Yes        | ✅ Yes (hash-based)  |
 | Lazy Loading           | No             | Yes           | ✅ Yes               |
-| Annotation-Based       | No             | Yes           | ⚠️ Only @PartOf      |
+| Annotation-Based       | No             | Yes           | ⚠️ `@PartOf`, `@SimpleReference` |
 
 ---
 

@@ -47,9 +47,9 @@ object EncryptableConfig {
         this.threadLimit = maxOf(1, (Runtime.getRuntime().availableProcessors() * percentLimit).toInt())
 
         // GridFS threshold for storing in External Storage vs regular document
-        // Ensuring a minimum threshold of 1024 bytes
+        // Ensuring a minimum threshold of 16384 bytes (16KB)
         val gridFsThreshold = environment.getProperty("encryptable.storage.threshold", String.EMPTY).toIntOrNull() ?: 0
-        this.storageThreshold = maxOf(1024, gridFsThreshold)
+        this.storageThreshold = maxOf(16384, gridFsThreshold)
 
         // Should integrity checks be performed on Encryptable entities?
         // Default is true

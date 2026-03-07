@@ -235,6 +235,50 @@ data class SystemConfig(
 )
 ```
 
+### `@SimpleReference` on `@HKDFId` Parents (v1.0.9+)
+
+By default, an `@HKDFId` parent stores the **child's secret** (encrypted with the parent's own secret) for every nested `Encryptable` field. This lets the parent fully decrypt the child on load.
+
+`@SimpleReference` changes this: only the **child's ID** is stored — identical to what `@Id` parents always do. This is the right choice when the parent does not own the child's secret.
+
+| Parent strategy | Field annotation | What is stored | Can decrypt child? |
+|---|---|---|---|
+| `@HKDFId` | *(none)* | Child secret, encrypted with parent secret | ✅ Yes |
+| `@HKDFId` | `@SimpleReference` | Child ID, plaintext | ❌ No |
+| `@Id` | *(none)* | Child ID, plaintext | ❌ No |
+
+#### Load, Decrypt, and Delete behaviour with `@SimpleReference`
+
+Even when only the ID is stored, the parent retains partial access to the child:
+
+| Operation | Possible? | Notes |
+|---|---|---|
+| **Load** | ✅ Yes | Child is fetched by its stored ID; non-encrypted fields are readable. |
+| **Decrypt** | ❌ No | Parent does not hold the child's secret. `@Encrypt` fields on the loaded child return raw ciphertext; the entity is marked errored for those fields. |
+| **Delete** | ✅ Yes | The ID is sufficient for deletion. For single `Encryptable` fields, `@PartOf` cascade handles it. For `List<Encryptable>` fields, `@PartOf` **must** be on the list field — without it, removing items or deleting the parent will not cascade-delete the children. |
+
+The child's secret must be obtained **independently** (e.g., from the authenticated user's session or a separate `findBySecret` call) if decryption of encrypted fields is needed.
+
+#### When to use `@SimpleReference`
+
+- The child is a **shared resource** whose secret you don't own (e.g., referenced by multiple unrelated parents).
+- You need a navigable link and/or the ability to delete the child without binding its secret to the parent.
+- Security model requires that the parent cannot decrypt the child's sensitive fields.
+
+```kotlin
+class Order : Encryptable<Order>() {
+    @HKDFId override var id: CID? = null
+
+    // Owned child — parent holds secret → can decrypt automatically
+    @PartOf
+    var invoice: Invoice? = null
+
+    // Shared reference — parent holds ID only → can load and delete, but not decrypt
+    @SimpleReference
+    var deliveryAddress: Address? = null
+}
+```
+
 #### Automatic Reference Format Migration (v1.0.4+)
 
 For @Id entities that reference @HKDFId entities, v1.0.4+ automatically migrates the **reference storage format** (not the data encryption itself):
@@ -440,6 +484,7 @@ Choose @Id when convenience and shared management are acceptable.
 ---
 
 **See Also**:
+- [ORM Features & Relationships](ORM_FEATURES.md)
 - [Configuration Guide](CONFIGURATION.md)
 - [Secret Rotation](SECRET_ROTATION.md)
 - [Security Best Practices](BEST_PRACTICES.md)

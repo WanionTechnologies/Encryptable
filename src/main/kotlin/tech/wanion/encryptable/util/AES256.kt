@@ -89,7 +89,8 @@ object AES256 {
     @JvmStatic
     fun generateAesKeyFromSecret(secret: String, source: Any): SecretKeySpec {
         val key = HKDF.deriveFromEntropy(secret, source, context = "ENCRYPTION_KEY")
-        // Register for clearing to minimize memory exposure
+        // Register both the raw key bytes and the secret for end-of-request wiping.
+        // `markForWiping` uses a Set internally — registering the same instance twice is idempotent.
         markForWiping(secret, key)
         return SecretKeySpec(key, AES_ALGORITHM)
     }
@@ -172,6 +173,8 @@ object AES256 {
                 Encryptable.setErrored(source)
             return ByteArray(0)
         } finally {
+            // Immediately zero the AES key — not deferred. `markForWiping` is end-of-request;
+            // `aesKey.clear()` wipes the key bytes right here, regardless of success or failure.
             aesKey.clear()
         }
     }
@@ -201,15 +204,20 @@ object AES256 {
         val cipher = Cipher.getInstance(AES_ALGORITHM_GCM)
         try {
             cipher.init(Cipher.DECRYPT_MODE, aesKey, gcmSpec)
-            var decryptedData = ByteArray(0)
+            val decryptedData: ByteArray
             try {
                 decryptedData = cipher.doFinal(encryptedData)
-            } catch (e: Exception) {
-                throw e
             } finally {
-                // Register for clearing to minimize memory exposure
-                markForWiping(secret, decryptedData)
+                // `finally` runs on both success and failure.
+                // On failure (AEADBadTagException), `decryptedData` is never assigned —
+                // the exception propagates to the outer catch, which returns `data` unchanged.
+                // On success, `decryptedData` is assigned before this block executes.
+                // Either way, only `secret` needs registering here — `decryptedData` is
+                // registered below on the success path, after it is safely assigned.
+                markForWiping(secret)
             }
+            // Reached only on success — register decryptedData for end-of-request wiping.
+            markForWiping(decryptedData)
             return decryptedData
         } catch (e: Exception) {
             val src = sourceNameFor(source)
@@ -218,6 +226,8 @@ object AES256 {
                 Encryptable.setErrored(source)
             return data
         } finally {
+            // Immediately zero the AES key — not deferred. `markForWiping` is end-of-request;
+            // `aesKey.clear()` wipes the key bytes right here, regardless of success or failure.
             aesKey.clear()
         }
     }

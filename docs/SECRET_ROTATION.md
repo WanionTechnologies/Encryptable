@@ -1,4 +1,4 @@
-# Secret Rotation in Encryptable
+en# Secret Rotation in Encryptable
 
 ## 🎯 Executive Summary
 
@@ -61,3 +61,14 @@ For technical details, see the [rotateSecret method documentation](../src/main/k
 ## 🎬 Conclusion
 
 Secret rotation in Encryptable Framework is secure, user-driven, and compliance-friendly. By leveraging user-controlled secrets and request-scoped knowledge architecture, the framework eliminates key storage risks and simplifies regulatory alignment for modern applications.
+
+---
+
+## 🔑 Related: Recovery Codes
+
+Recovery codes are a direct application of secret rotation: a high-entropy one-time code is used to decrypt the user's stored secret, after which `rotateSecret` is immediately called to set a new secret.
+
+This pattern allows users to regain access after losing their primary secret, without the server ever storing or learning the secret.
+
+> See **[Recovery Codes](RECOVERY_CODES.md)** for the full implementation pattern, security analysis, and checklist.
+

@@ -15,15 +15,16 @@ import tech.wanion.encryptable.util.AES256
 import tech.wanion.encryptable.util.Limited.parallelForEach
 import tech.wanion.encryptable.util.extensions.encodeURL64
 import tech.wanion.encryptable.util.extensions.getBean
+import tech.wanion.encryptable.util.extensions.metadata
 
 class Migration107to108 : Migration {
     /** Logger instance for logging migration progress and any issues encountered during the migration process. */
     private val logger = LoggerFactory.getLogger(Migration107to108::class.java)
 
-    /** The source version for this migration, indicating that it will update the database schema from version 1.0.7 to 1.0.8. */
+    /** The source version for this migration, indicating that it will update the database from version 1.0.7 to 1.0.8. */
     override fun fromVersion(): String = "1.0.7"
 
-    /** The target version for this migration, indicating that it will update the database schema from version 1.0.7 to 1.0.8. */
+    /** The target version for this migration, indicating that it will update the database from version 1.0.7 to 1.0.8. */
     override fun toVersion(): String = "1.0.8"
 
     /**
@@ -121,7 +122,7 @@ class Migration107to108 : Migration {
                             val reference = storage.createReference(fieldBytes)
 
                             val bytes = when (reference) {
-                                is Any -> storage.read(reference)
+                                is Any -> storage.read(field.metadata, reference)
                                 else -> fieldBytes // If reference is null, it means the data was stored inline.
                             }
 
@@ -138,7 +139,7 @@ class Migration107to108 : Migration {
                             val reEncryptedBytes = AES256.encrypt(masterSecret, entityClass, decryptedBytes)
 
                             val newFieldBytes = when (reference) {
-                                is Any -> storage.createWithBytesReference(reEncryptedBytes) // If there was an existing reference, create a new one for the re-encrypted bytes.
+                                is Any -> storage.createWithBytesReference(field.metadata, reEncryptedBytes) // If there was an existing reference, create a new one for the re-encrypted bytes.
                                 else -> reEncryptedBytes // If there was no existing reference, it means the data was stored inline, so we can just use the re-encrypted bytes directly.
                             }
 
@@ -148,7 +149,7 @@ class Migration107to108 : Migration {
 
                             // After successfully migrating the data, we can delete the old reference if it existed.
                             if (reference != null)
-                                storage.delete(reference)
+                                storage.delete(field.metadata, reference)
 
                         } catch (e: Exception) {
                             logger.error(e.message)

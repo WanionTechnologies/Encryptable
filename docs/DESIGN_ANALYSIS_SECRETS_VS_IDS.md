@@ -491,9 +491,9 @@ if (user.isPresent) {
 // Reason: No usernames, no password hashes stored
 ```
 
-**Workaround:** Use the recommended Zero-Knowledge 2FA pattern (see `ZERO_KNOWLEDGE_AUTH.md`).
+**See:** [Transient Knowledge Authentication](concepts/TRANSIENT_KNOWLEDGE_AUTH.md) for the full 2FA + recovery key authentication model.
 
-#### 4. User Cannot Recover Lost Secrets
+#### 4. User-Controlled Secret Recovery
 
 ```kotlin
 // Traditional: Admin can reset password
@@ -502,14 +502,15 @@ user.password = hashPassword("temporary-password")
 repository.save(user)
 // User can log in with temporary password
 
-// Encryptable: No recovery mechanism
-// If user loses secret → data is permanently inaccessible
-// Even admin cannot help
+// Encryptable: No server-side recovery — but user-controlled recovery is possible
+// If user loses secret AND has no recovery codes → data is permanently inaccessible
+// If user has recovery codes → rotateSecret() restores access with a new secret
+// Admin cannot help either way — recovery is entirely user-controlled
 
-// Reason: True zero-knowledge means NO ONE can recover the secret
+// Reason: Transient knowledge means the SERVER never holds secrets
 ```
 
-**Workaround:** Use recovery keys (see `ZERO_KNOWLEDGE_AUTH.md` for encrypted recovery key pattern).
+**Recovery:** Use recovery codes — see [RECOVERY_CODES.md](RECOVERY_CODES.md) for the full pattern.
 
 ### What You Gain
 
@@ -791,12 +792,13 @@ This document provides the architectural rationale for using secrets instead of 
 - **[Transient-Knowledge Authentication](concepts/TRANSIENT_KNOWLEDGE_AUTH.md)** - Complete authentication flow with registration, login, and recovery keys
 
 **Performance & Scalability:**
-- **[GridFS Performance](../examples/03_GridFS.kt)** - Lazy loading, file size thresholds (>1KB), concurrent access patterns
+- **[GridFS Performance](../examples/03_GridFS.kt)** - Lazy loading, file size thresholds (>16KB), concurrent access patterns
 - **[Test Suite](../src/test/kotlin/cards/project/README.md)** - Performance benchmarks and GridFS overhead measurements
 - **[Limitations](LIMITATIONS.md)** - Known performance trade-offs and optimization strategies
 
 **Multi-Device & Recovery:**
-- **[Transient-Knowledge Auth: Recovery Keys](concepts/TRANSIENT_KNOWLEDGE_AUTH.md#-recovery-keys-encrypted-zero-knowledge-strictly-independent-recovery)** - How to implement secure recovery without compromising zero-knowledge
+- **[Recovery Codes](RECOVERY_CODES.md)** - User-controlled secret recovery via offline codes, implemented on top of `rotateSecret`
+- **[Transient-Knowledge Auth](concepts/TRANSIENT_KNOWLEDGE_AUTH.md)** - Full 2FA + recovery key authentication model
 
 ### Testing
 

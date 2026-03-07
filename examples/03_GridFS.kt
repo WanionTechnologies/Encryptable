@@ -13,7 +13,7 @@ import org.springframework.stereotype.Repository
  *
  * This example demonstrates:
  * - Storing large binary files (images, documents, etc.)
- * - Automatic GridFS storage for ByteArray fields >1KB
+ * - Automatic GridFS storage for ByteArray fields >16KB
  * - Lazy loading of large files
  * - Encrypting files before GridFS storage
  * - Efficient handling of large data
@@ -34,14 +34,14 @@ class DocumentEntity : Encryptable<DocumentEntity>() {
 
     // Small file - stored directly in document
     @Encrypt
-    var thumbnail: ByteArray? = null // <1KB - stored in document
+    var thumbnail: ByteArray? = null // <16KB - stored in document
 
     // Large file - automatically stored in GridFS
     @Encrypt
-    var pdfContent: ByteArray? = null // >1KB - stored in GridFS
+    var pdfContent: ByteArray? = null // >16KB - stored in GridFS
 
     @Encrypt
-    var imageContent: ByteArray? = null // >1KB - stored in GridFS
+    var imageContent: ByteArray? = null // >16KB - stored in GridFS
 
     var contentType: String? = null // Not encrypted
     var fileSize: Long? = null // Not encrypted

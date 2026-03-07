@@ -21,7 +21,7 @@ class EncryptableStorageTest : BaseEncryptableTest() {
 
     @Test
     fun `should store small binary in document`() {
-        // Given - 512 bytes (less than 1KB threshold)
+        // Given - 512 bytes (less than 16KB threshold)
         val secret = generateSecret()
         val smallData = ByteArray(512) { it.toByte() }
         val document = TestDocument().withSecret(secret).apply {
@@ -45,7 +45,7 @@ class EncryptableStorageTest : BaseEncryptableTest() {
 
     @Test
     fun `should store large binary in Storage`() {
-        // Given - 500KB (greater than 1KB threshold)
+        // Given - 500KB (greater than 16KB threshold)
         val secret = generateSecret()
         val largeData = createSampleBytes(500)
         val document = TestDocument().withSecret(secret).apply {

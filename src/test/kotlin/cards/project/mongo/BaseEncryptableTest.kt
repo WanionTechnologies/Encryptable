@@ -22,7 +22,10 @@ import java.security.SecureRandom
         "spring.data.mongodb.port=27017",
         "spring.data.mongodb.database=projectcards",
         "server.port=0",
-        "spring.main.allow-bean-definition-overriding=true"
+        "spring.main.allow-bean-definition-overriding=true",
+        // Fixed master secret used by all @Id + @Encrypt tests.
+        // Must be stable across the shared Spring context — never randomised here.
+        "encryptable.master.secret=test-master-secret-encryptable-key-32chars"
     ]
 )
 abstract class BaseEncryptableTest {

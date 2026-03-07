@@ -6,6 +6,9 @@ package tech.wanion.encryptable.storage
  * @param R The type of the reference used to identify stored data.
  */
 interface IStorage<R: Any> {
+    /** Returns the expected length of the reference in bytes, which is used to validate and create references from byte arrays. */
+    val referenceLength: Int
+
     /** Creates a reference from the given byte array, which can be used to retrieve the associated data from storage. */
     fun createReference(referenceBytes: ByteArray?): R?
 
@@ -13,14 +16,14 @@ interface IStorage<R: Any> {
     fun bytesFromReference(reference: R): ByteArray
 
     /** Creates a new entry in storage for the given byte array and returns a reference to it. */
-    fun create(bytesToStore: ByteArray): R
+    fun create(fieldMetadata: String, bytesToStore: ByteArray): R
 
     /** Creates a new entry in storage for the given byte array and returns the associated byte array representation of the reference. */
-    fun createWithBytesReference(bytesToStore: ByteArray): ByteArray = bytesFromReference(create(bytesToStore))
+    fun createWithBytesReference(fieldMetadata: String, bytesToStore: ByteArray): ByteArray = bytesFromReference(create(fieldMetadata, bytesToStore))
 
-    /** Reads the data associated with the given reference from storage. */
-    fun read(reference: R): ByteArray?
+    /** Reads the data associated with the given reference from storage and returns it as a byte array. */
+    fun read(fieldMetadata: String, reference: R): ByteArray?
 
     /** Deletes the data associated with the given reference from storage. */
-    fun delete(reference: R)
+    fun delete(fieldMetadata: String, reference: R)
 }

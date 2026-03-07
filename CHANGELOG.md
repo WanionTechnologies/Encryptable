@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.6** (2026-01-24) - Performance: Code Optimizations & Bulk Updates
 - **1.0.7** (2026-01-30) - Polymorphic Relationships Support
 - **1.0.8** (2026-02-27) - Major Improvements & Critical Security Fixes
+- **1.0.9** (2026-03-07) - Minor Fix: Nested Entity IDs Incorrectly Encrypted on `@Id` Parents & Major Test Expansion
 
 ---
 ## [1.0.0] - 2025-12-12 (Initial Release)
@@ -267,6 +268,7 @@ Without annotations or configurations, the framework can automatically handle po
 
 - **Critical Security Fix:**
   - Fixed encryption of `ByteArray` fields for `@Id` entities. Previously, the secret used for encryption was the same as the entity id, which would compromise security. Now, the correct secret (master secret) is always used for encryption in @Id entities.
+  - See [MISSED_CALLSITE_BUG_1_0_8.md](docs/MISSED_CALLSITE_BUG_1_0_8.md) for a full post-mortem: what happened, why it happens to everyone, and what developers should learn from it.
 - **Data Migration Support:**
   - Added robust migration logic to update existing data to the new, secure encryption scheme. Automatically detects and re-encrypts affected fields with the correct secret.
 - **Storage Abstraction:**
@@ -305,6 +307,36 @@ After migration, you must rename the property `encryptable.gridfs.threshold` to 
   ```
 
 **Note:** This release includes significant internal refactoring and security improvements. All users are strongly encouraged to upgrade and run the migration to ensure data is encrypted with the correct secret.
+
+---
+
+## [1.0.9] - 2026-03-07
+
+### 🔧 Minor Fix, Major Test Expansion
+
+#### Fix: Nested Entity IDs Incorrectly Encrypted on `@Id` Parents
+
+- **Fixed:** The write-path population block for `encryptableListFields` was missing from `processFields` in 1.0.0–1.0.8. In practice this was a **non-issue** — `EncryptableList` already implemented the correct `isolated` guard on every mutation path (`add`, `addAll`, `removeAt`), so `encryptableListFieldMap` was always populated with the correct value (child secret for `@HKDFId` parents, child ID for `@Id` parents). The fix in 1.0.9 adds the explicit write-path block to `processFields` for correctness and consistency with the single-field path. The only observable effect of the missing block was that, for `@Id` parents that also had `@Encrypt` fields, those plaintext child IDs could be re-encrypted with the master secret on the subsequent `processFields` pass — storing an encrypted ID where a plaintext ID was expected. No secrets were exposed; the only consequence was that the nested references would fail to resolve on next load.
+- **Migration:** ⚠️ **Required for `@Id` entities that have both nested `Encryptable` fields and at least one `@Encrypt` field.** In 1.0.0–1.0.8, those entities would encrypt the plaintext child IDs stored in `encryptableListFieldMap` / `encryptableFieldMap` with the master secret before persisting. The 1.0.9 migration decrypts those values back to plaintext IDs. Entities without `@Encrypt` fields, and `@HKDFId` entities, are unaffected. See the [migration guide](docs/MIGRATING_FROM_OTHER_VERSIONS.md#-migrating-to-109-from-108-or-earlier-100108) for details.
+
+#### Key-Correctness Test Suite (`EncryptableKeyCorrectnessTest` + `EncryptableSlicedStorageTest`)
+
+A comprehensive test suite was added to permanently close the regression gap identified after the 1.0.8 incident. These tests bypass the framework's decrypt path entirely — reading raw stored values via reflection and from storage — and assert both:
+- **Correct key succeeds:** The expected key decrypts the raw ciphertext to the original plaintext.
+- **Wrong key fails:** Any other key returns the encrypted input unchanged.
+
+Codepaths covered (105 tests across 16 files):
+- `String`, `ByteArray`, `List<String>` `@Encrypt` fields — `@HKDFId` and `@Id` entities
+- `encryptableFieldMap` — single nested `Encryptable` fields — `@HKDFId` and `@Id` parents
+- `encryptableListFieldMap` — `List<Encryptable>` fields — `@HKDFId` and `@Id` parents
+- `@SimpleReference` — nested and list fields — ID stored, not secret
+- `@Sliced` fields — per-slice encryption, parallel fetch, boundary correctness — `@HKDFId` and `@Id`
+- `storageFields` / `storageFieldIdMap` — inline and storage-backed `ByteArray` fields
+
+#### New Features
+
+- **`@Sliced(sizeMB)` annotation:** Splits `ByteArray` fields into independently encrypted slices stored separately in any `IStorage` backend. Enables parallel fetch + decrypt with O(1) memory overhead per slice. Slice size 1–32 MB, default 4 MB. No `IStorage` changes required.
+- **`@SimpleReference` annotation:** Marks a nested `Encryptable` field or `List<Encryptable>` field on an `@HKDFId` parent to store only the child's ID (plaintext) instead of the child's secret (encrypted). Useful for shared references where you do not own the child's secret.
 
 ---
 

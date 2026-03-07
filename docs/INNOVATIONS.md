@@ -15,11 +15,11 @@ This document highlights the novel technical contributions that distinguish Encr
 2. **Deterministic Cryptography for Stateless, Transient-Knowledge Security** (New!)
 3. **Anonymous Data Model** (INNOVATION: No user identity, credentials, or metadata required on server)
 4. **ORM-Like Relationship Management for MongoDB (ODM)** (One-to-One, One-to-Many, Many-to-Many, Cascade Delete)
-5. **Transparent Polymorphism for Nested Entities** (Industry-First: Zero-Configuration Polymorphic Documents)
+5. **Transparent Polymorphism for Nested Entities** (Novel: Zero-Configuration Polymorphic Documents)
 6. **Capability URLs – Secure, Shareable, Transient-Knowledge Access** (Novel Application)
 7. **Automatic Field-Level Encryption with Per-User Isolation** (Unique Combination)
 8. **Intelligent Change Detection via Field Hashing** (Novel Approach)
-9. **Encrypted GridFS with Lazy Loading** (Unique Integration)
+9. **The Field-as-Live-Mirror** (Novel Combination — `ByteArray` field as a live mirror of any storage backend)
 
 ---
 
@@ -90,7 +90,7 @@ HKDFID({ secret, sourceClass ->
 | **MongoDB ObjectId** | Timestamp + Random | ❌ No | ⚠️ Partially predictable | ✅ Native |
 | **Encryptable** | **HKDF (RFC 5869)** | ✅ **Automatic** | ✅ **Cryptographically secure** | ✅ **Full ORM** |
 
-**Winner:** ✅ **Encryptable is the only one with all four features**
+**Encryptable is the only solution in this comparison with all four features.**
 
 ### **Real-World Impact**
 
@@ -265,9 +265,9 @@ This innovation eliminates one of the main reasons to choose SQL over MongoDB, e
 
 ### **What Makes This Unique**
 
-**Industry-First:** First ORM-like framework to support 100% transparent polymorphism for nested documents without any type annotations or configuration.
+**Novel approach:** To our knowledge, the first MongoDB ODM to support fully transparent polymorphism for nested documents without any type annotations, discriminator columns, or configuration.
 
-Traditional ORMs require explicit type discriminators (`@Type`, `@JsonTypeInfo`, `@Inheritance`). Encryptable eliminates this—use abstract classes as field types, and the framework automatically preserves the concrete type.
+Traditional ORMs require explicit type discriminators (`@Type`, `@JsonTypeInfo`, `@Inheritance`). Encryptable eliminates this — use abstract classes as field types, and the framework automatically preserves the concrete type.
 
 ### **The Innovation**
 
@@ -324,7 +324,7 @@ Uses internal `encryptableFieldTypeMap` to track concrete types, storing only wh
 | **Type Preservation** | ✅ Automatic | ✅ Yes | ⚠️ Manual setup | ⚠️ Manual |
 | **Storage Overhead** | ✅ Minimal | ⚠️ Always stores | ⚠️ Always stores | ⚠️ Always stores |
 
-**Winner:** ✅ **Only Encryptable has 100% transparent polymorphism with zero configuration**
+**Encryptable is the only solution in this comparison with fully transparent polymorphism requiring zero configuration.**
 
 
 ---
@@ -425,7 +425,7 @@ val patient2 = PatientRecord().withSecret(secret2)  // Uses secret2 for encrypti
 | **Cost** | ✅ Free | ❌ Enterprise + KMS | ✅ Free | ✅ Free |
 | **Code Required** | `@Encrypt` | 50+ lines config | 100+ lines | 100+ lines |
 
-**Winner:** ✅ **Only Encryptable has true zero-configuration encryption**
+**Encryptable is the only solution in this comparison with true zero-configuration encryption.**
 
 ### **Innovation Highlight**
 
@@ -535,19 +535,47 @@ override fun hashCode(): Int {
 | **Works with Encryption** | ✅ Yes | ❌ No | ❌ No | ❌ No |
 | **Performance** | ✅ Parallel computation | ⚠️ Sequential | ⚠️ N/A | ⚠️ Sequential |
 
-**Winner:** ✅ **Only Encryptable has zero-config, automatic partial updates with parallel computation**
+**Encryptable is the only solution in this comparison with zero-config, automatic partial updates and parallel computation.**
 
 ### **Innovation Highlight**
 
-**First framework to use parallel hashCode computation for change detection in MongoDB ORM, with optimized handling for large binary data (ByteArray checksum).**
+**To our knowledge, the first MongoDB ODM to use parallel hashCode computation for change detection, with optimized handling for large binary data (ByteArray checksum).**
 
 ---
 
-## 📦 Innovation #9: Encrypted GridFS with Lazy Loading
+## 📦 Innovation #9: The Field-as-Live-Mirror — Encrypted Storage with Pluggable Backends
 
 ### **What Makes This Unique**
 
-**Unique Integration:** Automatic GridFS storage for large fields + encryption + lazy loading + cleanup - all transparent to developer.
+In every framework that exists today — Spring Data, JPA, Morphia, Spring Content — storing a large binary field externally (GridFS, S3, file system) requires the developer to **manually manage the lifecycle**: call the storage API to save, track the reference somewhere, call the storage API to delete, handle lazy loading explicitly, and wire in encryption on top of all of it.
+
+**Encryptable eliminates all of that.** A `ByteArray` field becomes a **live mirror of its storage backend** — automatically, based on size alone. No annotation required for GridFS. The field IS the storage. The developer never interacts with the storage API directly.
+
+- **Assign a value** → automatically stored in GridFS if above threshold (no annotation needed), or in any custom backend if annotated.
+- **Assign a new value** → old file deleted, new file stored atomically.
+- **Assign `null`** → file deleted from storage, zero orphaned files.
+- **Read the field** → lazily fetched from storage and decrypted on first access.
+- **Delete the entity** → all associated storage files cleaned up automatically.
+
+**No explicit save. No file manager. No GridFS API. No S3 SDK calls. Just a field assignment.**
+
+**To our knowledge, no existing framework combines all of these capabilities behind a plain field assignment.** The concept builds on ideas present in other ecosystems (Django's `FileField`, Rails' `ActiveStorage`, Spring Content), but takes them significantly further by making the field value itself — not a reference, path, or proxy — the source of truth.
+
+The closest things that exist, across all ecosystems, are:
+
+| Framework | Language | How it differs from Encryptable |
+|---|---|---|
+| **Spring Content** | Java/Kotlin | Requires explicit `@ContentId`/`@ContentLength` fields + explicit `setContent()`/`getContent()` API calls. Field is a reference, not the storage. No encryption, no atomic replace, no AOP lazy loading. |
+| **Django `FileField`** | Python | Associates a field with a file in storage, but the field stores a **path string**, not actual bytes. Developer calls `.save()` explicitly. No encryption, no atomic replace, no threshold routing. |
+| **Rails ActiveStorage** | Ruby | `has_one_attached :file` links a model to a file, but requires explicit `attach()`/`purge()` calls. Field holds an attachment proxy, not bytes. No encryption, no atomic replace. |
+| **JPA `@Lob`** | Java/Kotlin | Inline DB storage only. No external backend, no encryption, no lazy loading, no lifecycle management. |
+| **CarrierWave / Shrine** | Ruby | Explicit upload/delete API calls always required. No live-mirror semantics. |
+
+Every single one of these treats the field as a **managed reference** to external storage. The developer is still responsible for calling APIs, tracking references, and managing lifecycle.
+
+**Encryptable's key distinction:** the `ByteArray` value itself is the source of truth. Assign bytes → stored. Assign new bytes → old deleted, new stored atomically. Assign `null` → deleted. Read the field → lazily fetched and decrypted. The developer never calls a storage API. There is no reference to track. There is no cleanup to manage.
+
+The `ByteArray` value at any given moment *is* the storage state. The individual pieces (AOP field interception, storage abstraction, encryption, lazy loading) exist elsewhere, but their composition into a single transparent field assignment is, to our knowledge, unique.
 
 ### **The Innovation**
 
@@ -556,123 +584,113 @@ override fun hashCode(): Int {
 class Document : Encryptable<Document>() {
     @HKDFId
     override var id: CID? = null
-    
+
     @Encrypt
-    var pdfContent: ByteArray? = null  // All magic happens here!
+    @S3Storage  // or default GridFS, or your own backend — field behavior is identical
+    var pdfContent: ByteArray? = null
 }
 
-// Framework automatically:
-// 1. Detects ByteArray > 1KB (configurable threshold)
-// 2. Encrypts the data (AES-256-GCM)
-// 3. Stores in GridFS
-// 4. Saves GridFS ObjectId reference
-// 5. Lazy loads on access
-// 6. Decrypts on retrieval
-// 7. Cleans up on entity delete
-
-// Developer writes:
+// Storing:
 val doc = Document().withSecret(secret).apply {
-    pdfContent = largePdfBytes  // Just assign!
+    pdfContent = largePdfBytes  // Just assign. That's it.
 }
 repository.save(doc)
 
-// Later:
+// Updating (old file deleted, new file stored — atomically):
+doc.pdfContent = updatedPdfBytes
+repository.save(doc)
+
+// Deleting the file (no orphans left behind):
+doc.pdfContent = null
+repository.save(doc)
+
+// Reading (lazily fetched from storage and decrypted on first access):
 val retrieved = repository.findBySecretOrNull(secret)!!
-val pdf = retrieved.pdfContent  // Automatically loaded and decrypted!
+val pdf = retrieved.pdfContent  // Fetched, decrypted, returned. One line.
 ```
+
+### **What the Framework Does Transparently**
+
+When you assign a `ByteArray` to a storage-backed field, Encryptable:
+
+1. Detects whether the data exceeds the inline threshold (configurable, default 16KB)
+2. Encrypts the bytes if `@Encrypt` is present (AES-256-GCM)
+3. Stores them in the configured backend (GridFS, S3, or custom)
+4. Saves a compact reference (up to 16 bytes) in the entity document
+5. On read: lazily fetches the raw bytes from storage on first field access via AspectJ
+6. Decrypts them and returns the plaintext to the caller
+7. On update: creates the new file **before** deleting the old one — data integrity by default
+8. On delete or `null` assignment: removes the file from storage, zero orphaned files
 
 ### **Features**
 
 1. **Automatic Threshold Detection**
    ```kotlin
-   // Small data: Stored in document
-   var thumbnail = ByteArray(512)  // 512 bytes → document
-   
-   // Large data: Stored in GridFS (default: > 1KB, configurable)
-   var video = ByteArray(100_000_000)  // 100 MB → GridFS
-   
-   // Developer doesn't need to know which!
-   // Framework handles it automatically based on size threshold
+   // Small data → stored inline in the document
+   var thumbnail: ByteArray? = null  // 512 bytes → stays in MongoDB document
+
+   // Large data → stored externally (default threshold: 16KB, configurable)
+   var video: ByteArray? = null  // 100 MB → goes to storage backend
+
+   // Developer doesn't decide. The framework decides based on size.
    ```
 
-2. **Lazy Loading with Aspects**
+2. **Atomic Replace — Data Integrity by Default**
    ```kotlin
-   // No loading until accessed
-   val doc = repository.findBySecretOrNull(secret)!!  // GridFS not loaded
-   
-   // Triggered on first access
-   val content = doc.pdfContent  // NOW loaded from GridFS
+   // Updating a large field:
+   doc.pdfContent = newPdfBytes
+
+   // Framework:
+   // 1. Creates new file in storage FIRST
+   // 2. Only deletes old file AFTER successful creation
+   // = If creation fails, old data is untouched. Always.
    ```
 
-3. **Automatic Cleanup**
+3. **Lazy Loading via AspectJ**
    ```kotlin
-   // When entity deleted
-   repository.deleteBySecret(secret)
-   
-   // Framework automatically:
-   // 1. Finds all GridFS references
-   // 2. Deletes each GridFS file
-   // 3. Deletes entity document
-   // = Zero orphaned files
+   val doc = repository.findBySecretOrNull(secret)!!
+   // Storage not touched yet.
+
+   val content = doc.pdfContent
+   // NOW the framework fetches from storage, decrypts, and returns.
+   ```
+
+4. **Pluggable Backends — One Annotation**
+   ```kotlin
+   // Use GridFS (out of the box, no annotation needed):
+   var file: ByteArray? = null
+
+   // Use S3 (your implementation, one annotation):
+   @S3Storage
+   var file: ByteArray? = null
+
+   // The field behavior is completely identical regardless of backend.
    ```
 
 ### **Comparison with Existing Solutions**
 
-| Feature | Encryptable | MongoDB + Manual | Spring Data + GridFS | Morphia |
-|---------|-------------|------------------|---------------------|---------|
-| **Auto GridFS Storage** | ✅ Yes | ❌ Manual | ❌ Manual | ❌ Manual |
-| **Encryption** | ✅ Automatic | ❌ Manual | ❌ Manual | ❌ No |
-| **Lazy Loading** | ✅ Automatic | ❌ Manual | ❌ Manual | ❌ No |
-| **Cleanup** | ✅ Automatic | ❌ Manual | ❌ Manual | ❌ Manual |
-| **Code Required** | 1 annotation | 100+ lines | 50+ lines | 50+ lines |
+| Feature | Encryptable | MongoDB + Manual | Spring Data + GridFS | Spring Content |
+|---------|-------------|------------------|---------------------|----------------|
+| **Field-as-live-mirror** | ✅ Yes | ❌ No | ❌ No | ❌ No |
+| **Auto Storage** | ✅ Yes (pluggable) | ❌ Manual | ❌ Manual | ⚠️ Partial |
+| **Built-in Encryption** | ✅ Automatic | ❌ Manual | ❌ Manual | ❌ No |
+| **Lazy Loading** | ✅ Automatic | ❌ Manual | ❌ Manual | ❌ Manual |
+| **Atomic Replace** | ✅ Yes | ❌ Manual | ❌ Manual | ❌ No |
+| **Zero Orphan Guarantee** | ✅ Yes | ❌ Manual | ❌ Manual | ⚠️ Partial |
+| **Pluggable Backends** | ✅ Yes (1 annotation) | ❌ Manual | ❌ Manual | ⚠️ Config-heavy |
+| **Code Required** | 1 annotation | 100+ lines | 50+ lines | 30+ lines + config |
 
-**Winner:** ✅ **Only Encryptable has fully automatic encrypted GridFS**
+**Encryptable is the only solution in this comparison that treats a `ByteArray` field as a live mirror of its storage backend.**
 
 ### **Innovation Highlight**
 
-**First framework to combine GridFS + encryption + lazy loading + automatic cleanup in a single annotation.**
+This is not just a convenience feature. It is a **fundamental rethinking of how binary data is modeled in a persistence framework.** Instead of the developer managing a reference to an external file, the field itself carries full semantic meaning: its value is its storage state. Assign it and it is stored. Null it and it is gone. Read it and it is there.
 
----
+**To our knowledge, Encryptable is the first framework to combine transparent field-assignment-driven storage lifecycle management for encrypted binary data** — combining AOP field interception, automatic threshold routing, per-entity encryption, lazy loading, atomic replace, and zero-orphan guarantees behind a plain `ByteArray` field with no API calls required.
 
-## GridFS Integration and Extensibility
+The individual techniques (AOP interception, storage abstraction, encryption, lazy loading) are well-established. The novelty is their composition into a single, seamless developer experience where a field assignment is the only interaction required.
 
-Encryptable provides out-of-the-box integration with MongoDB GridFS for storing large files and binary data. However, the storage abstraction is designed to be easily extendable to support any kind of storage backend, such as Amazon S3, S3-compatible services, or even custom file systems.
-
-### Extending to Other Storage Backends
-
-The framework's storage system is built around the `IStorage` interface. To add support for a new storage backend:
-
-1. **Implement the `IStorage` interface** for your storage type (e.g., S3, file system, etc.).
-2. **Create a custom annotation** (e.g., `@S3Storage`) and annotate it with `@Storage(storageClass = YourStorageImpl::class)`.
-3. **Annotate your entity field** with your custom annotation. Encryptable will automatically use your storage implementation for that field.
-
-This approach is extremely straightforward and minimizes boilerplate. The provided `GridFSStorage` implementation serves as a template for creating your own storage backends.
-
-**Example:**
-```kotlin
-@Component
-class S3StorageImpl : IStorage<ReferenceObj> { /* ... */ }
-
-@Target(AnnotationTarget.FIELD)
-@Storage(storageClass = S3StorageImpl::class)
-annotation class S3Storage
-
-class MyEntity : Encryptable<MyEntity>() {
-    @S3Storage
-    @Encrypt
-    var myFile: ByteArray? = null
-}
-```
-
-**Note:** The storage implementation does not need to handle encryption. If you annotate the field with `@Encrypt`, Encryptable will transparently encrypt and decrypt the data for you.
-
-This design makes it as easy as possible to add new storage backends with minimal effort, following the same pattern as the built-in GridFS integration.
-
-**Automatic Update and Deletion:**
-- If you set a storage-backed `ByteArray` field to a new value, Encryptable will automatically update the stored file or object in the underlying storage backend (GridFS, S3, etc.), creating a new entry and deleting the old one if needed. This ensures that the storage always reflects the current state of your entity.
-- If you set the field to `null`, Encryptable will delete the associated file or object from the storage backend, preventing orphaned files and keeping storage in sync with your data model.
-
-These capabilities demonstrate the power and convenience of Encryptable's storage abstraction, allowing seamless, automatic management of external files with minimal code and no manual cleanup required.
+> 📦 **[Deep dive into Storage Abstraction, GridFS, custom backends, and implementation examples →](STORAGE.md)**
 
 ---
 
@@ -684,10 +702,10 @@ These capabilities demonstrate the power and convenience of Encryptable's storag
 2. ✅ **Cryptographic addressing architecture for MongoDB**
 3. ✅ **Automatic unsaved entity cleanup with GridFS integration**
 
-### **Industry-First Innovations**
+### **Novel Combinations (No Known Prior Art)**
 
 4. ✅ **Transparent polymorphism for nested documents (zero configuration)**
-5. ✅ **Single-annotation encrypted GridFS with lazy loading**
+5. ✅ **Field-as-live-mirror for binary data — to our knowledge, the first framework to combine AOP field interception, automatic storage routing, encryption, lazy loading, atomic replace, and zero-orphan guarantees behind a plain `ByteArray` assignment.**
 6. ✅ **Field-level hash-based change detection for encrypted data**
 7. ✅ **Unified key derivation architecture for MongoDB ORM**
 8. ✅ **Per-user cryptographic isolation without external KMS**
@@ -698,7 +716,7 @@ These capabilities demonstrate the power and convenience of Encryptable's storag
 10. ✅ **Automatic partial updates with change detection**
 11. ✅ **Parallel encryption processing**
 12. ✅ **Request-scoped resource management**
-13. ✅ **Aspect-based lazy loading for GridFS**
+13. ✅ **Aspect-based lazy loading for storage backends**
 14. ✅ **ORM-like relationship management with cascade delete**
 
 ---
@@ -706,7 +724,7 @@ These capabilities demonstrate the power and convenience of Encryptable's storag
 
 ## 🎓 Conclusion
 
-Encryptable introduces **nine major innovations** to the MongoDB persistence and encryption space, combining novel approaches with industry-first integrations.
+Encryptable introduces **nine major innovations** to the MongoDB persistence and encryption space, combining novel approaches with unique integrations.
 
 **Key Achievements:**
 
@@ -717,7 +735,3 @@ Encryptable introduces **nine major innovations** to the MongoDB persistence and
 5. ✅ **100% automatic** resource cleanup
 6. ✅ **ORM-like** relationship management with cascade delete
 7. ✅ **100% transparent polymorphism** without configuration
-
----
-
-**Last Updated:** 2026-01-30

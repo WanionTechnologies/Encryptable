@@ -26,7 +26,7 @@ import tech.wanion.encryptable.config.EncryptableConfig
 import tech.wanion.encryptable.mongo.CID.Companion.binary
 import tech.wanion.encryptable.mongo.CID.Companion.cid
 import tech.wanion.encryptable.util.Limited.parallelForEach
-import tech.wanion.encryptable.util.extensions.getField
+import tech.wanion.encryptable.util.extensions.readField
 import tech.wanion.encryptable.util.extensions.markForWiping
 import java.lang.reflect.Method
 import java.time.Duration
@@ -161,7 +161,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * Used to determine read preferences for queries.
      * May be null if not set by the calling context.
      */
-    private val crudMethodMetadata: CrudMethodMetadata? = this.getField("crudMethodMetadata")
+    private val crudMethodMetadata: CrudMethodMetadata? = this.readField("crudMethodMetadata")
 
     /**
      * Tracks metadata for entities loaded within the current thread context.
@@ -201,7 +201,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     val typeClass: Class<T>
 
     init {
-        val entityMetadata = entityInformation.getField<MongoPersistentEntity<T>>("entityMetadata")
+        val entityMetadata = entityInformation.readField<MongoPersistentEntity<T>>("entityMetadata")
         this.typeClass = entityMetadata.type
     }
 
@@ -492,7 +492,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             prepareMethod.invoke(entity)
             return mongoOperations.insert(entity)
         }
-        afterSave(entity)
         return entity
     }
 
@@ -520,7 +519,6 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             return emptyList()
         newEntities.parallelForEach { prepareMethod.invoke(it) }
         val savedEntities = mongoOperations.insertAll(newEntities)
-        afterSaveAll(entities)
         return ArrayList(savedEntities)
     }
 

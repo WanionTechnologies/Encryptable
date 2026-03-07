@@ -1,17 +1,22 @@
 package tech.wanion.encryptable.storage
 
 import org.bson.types.ObjectId
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.data.mongodb.gridfs.GridFsTemplate
 import org.springframework.stereotype.Component
-import tech.wanion.encryptable.util.extensions.getBean
 import tech.wanion.encryptable.util.extensions.readFastBytes
 import java.io.InputStream
 
 @Component
 class GridFSStorage: IStorage<ObjectId> {
-    private val gridFsTemplate: GridFsTemplate = getBean(GridFsTemplate::class.java)
+    /** The GridFsTemplate used to interact with GridFS for storing and retrieving files. */
+    @Autowired
+    private lateinit var gridFsTemplate: GridFsTemplate
+
+    /** The expected length of an ObjectId reference in bytes, which is 12 bytes. */
+    override val referenceLength: Int = 12
 
     /**
      * Creates an ObjectId reference from the given byte array if it is a valid ObjectId representation (12 bytes), or returns null if it is not valid.
@@ -38,30 +43,29 @@ class GridFSStorage: IStorage<ObjectId> {
     override fun bytesFromReference(reference: ObjectId): ByteArray = reference.toByteArray()
 
     /**
-     * Creates a new entry in GridFS for the specified byte array data and returns the ObjectId reference for that data.
+     * Creates a new entry in GridFS for the given byte array and returns an ObjectId reference to it.
      *
-     * This method is called when a byte array field is updated from a small value (stored inline) to a large value (stored in GridFS),
-     * or when a new Encryptable object is created with a large byte array field that exceeds the inline storage threshold,
-     * and the storage system needs to create a new entry in GridFS for the field data.
-     * It stores the byte array data in GridFS and returns the ObjectId reference associated with that data.
+     * This method is called when an Encryptable object is being saved and its associated large fields need to be stored in GridFS.
+     * It creates a new entry in GridFS for the given byte array and returns an ObjectId reference that can be used to retrieve the data later.
      *
-     * @param bytesToStore The byte array data to be stored in GridFS.
-     * @return The ObjectId reference associated with the stored byte array data.
+     * @param fieldMetadata The metadata string representing the field for which the data is being stored, which can be used to determine the field name or other metadata if needed.
+     * @param bytesToStore The byte array containing the data to be stored in GridFS.
+     * @return An ObjectId reference that can be used to retrieve the stored data from GridFS later.
      */
-    override fun create(bytesToStore: ByteArray): ObjectId =
-        gridFsTemplate.store(bytesToStore.inputStream(), "gridFsField")
+    override fun create(fieldMetadata: String, bytesToStore: ByteArray): ObjectId =
+        gridFsTemplate.store(bytesToStore.inputStream(), fieldMetadata)
 
     /**
-     * Reads the data associated with the specified ObjectId reference from GridFS and returns it as a byte array.
+     * Reads the data associated with the given ObjectId reference from GridFS and returns it as a byte array.
      *
-     * This method is called when a specific ObjectId reference needs to be read from GridFS, such as when an Encryptable object is being loaded and its associated large fields need to be retrieved,
-     * or when a specific ObjectId reference needs to be accessed for any reason.
-     * It retrieves the data associated with the ObjectId reference from GridFS and returns it as a byte array.
+     * This method is called when an Encryptable object is being loaded and its associated large fields need to be retrieved from GridFS.
+     * It reads the data associated with the given ObjectId reference from GridFS and returns it as a byte array.
      *
+     * @param fieldMetadata The metadata string representing the field for which the data is being read, which can be used to determine the field name or other metadata if needed.
      * @param reference The ObjectId reference whose associated data is being read from GridFS.
-     * @return The byte array containing the data associated with the specified ObjectId reference, or null if no data is found.
+     * @return A byte array containing the data associated with the given ObjectId reference, or null if no data is found for that reference.
      */
-    override fun read(reference: ObjectId): ByteArray? {
+    override fun read(fieldMetadata: String, reference: ObjectId): ByteArray? {
         var inputStream: InputStream? = null
         try {
             val gridFsFile = gridFsTemplate.findOne(Query(Criteria.where("_id").`is`(reference)))
@@ -73,13 +77,14 @@ class GridFSStorage: IStorage<ObjectId> {
     }
 
     /**
-     * Deletes the data associated with the specified ObjectId reference from GridFS.
-     * This method is called when an Encryptable object is deleted and its associated large fields need to be cleaned up,
-     * or when a specific ObjectId reference needs to be removed from GridFS for any reason.
-     * It removes the data associated with the ObjectId reference from GridFS.
+     * Deletes the data associated with the given ObjectId reference from GridFS.
      *
+     * This method is called when an Encryptable object is being deleted and its associated large fields need to be removed from GridFS.
+     * It deletes the data associated with the given ObjectId reference from GridFS, ensuring that any stored data for that reference is removed.
+     *
+     * @param fieldMetadata The metadata string representing the field for which the data is being deleted, which can be used to determine the field name or other metadata if needed.
      * @param reference The ObjectId reference whose associated data is being deleted from GridFS.
      */
-    override fun delete(reference: ObjectId) =
+    override fun delete(fieldMetadata: String, reference: ObjectId) =
         gridFsTemplate.delete(Query(Criteria.where("_id").`is`(reference)))
 }

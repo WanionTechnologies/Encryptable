@@ -53,21 +53,21 @@ This guide details every configurable option, its default, rationale, and impact
   - Prevents exceeding document size limits and optimizes binary data handling for all supported storage backends.
 
 - **Default Value:**
-  - `1024` bytes
+  - `16384` bytes (16KB)
 
 - **How It Works:**
   - Any ByteArray field larger than this threshold is stored in the configured external storage backend.
-  - Values below 1024 are automatically raised to 1024 to avoid misconfiguration.
+  - Values below 16384 are automatically raised to 16384 to avoid misconfiguration.
 
 - **Example:**
   ```properties
-  encryptable.storage.threshold=4096
+  encryptable.storage.threshold=65536
   ```
 
 - **Why It Matters:**
   - For databases with document size limits (e.g., MongoDB), external storage prevents errors and improves performance.
   - For other backends (S3, file system, etc.), it allows efficient handling of large binary data.
-  - The default balances efficiency and safety for most use cases, regardless of the storage backend.
+  - The default of 16KB ensures that small fields (short strings, thumbnails, JSON blobs) stay inline in the document, while genuinely large fields are routed to external storage. This balances efficiency and safety for most use cases, regardless of the storage backend.
 
 ---
 
@@ -126,7 +126,7 @@ Set values in your environment, properties files, or system properties. For Spri
 
 ```properties
 thread.limit.percentage=0.5
-encryptable.storage.threshold=2048
+encryptable.storage.threshold=16384
 encryptable.integrity.check=true
 encryptable.migration=false
 ```
@@ -135,7 +135,7 @@ Or as environment variables:
 
 ```shell
 set THREAD_LIMIT_PERCENTAGE=0.5
-set ENCRYPTABLE_STORAGE_THRESHOLD=2048
+set ENCRYPTABLE_STORAGE_THRESHOLD=16384
 set ENCRYPTABLE_INTEGRITY_CHECK=true
 set ENCRYPTABLE_MIGRATION=false
 ```
@@ -151,7 +151,7 @@ set ENCRYPTABLE_MIGRATION=false
 
 - **GridFS Threshold:**
   - Use the default unless you have specific binary storage needs.
-  - Never set below 1024 bytes.
+  - Never set below 16384 bytes (16KB).
 
 - **Integrity Check:**
   - Keep enabled for privacy-sensitive, regulated, or security-critical applications.
@@ -165,12 +165,12 @@ set ENCRYPTABLE_MIGRATION=false
 
 ## 📊 Summary Table
 
-| Property                      | Default | Description                                              |
-|-------------------------------|---------|----------------------------------------------------------|
-| thread.limit.percentage       | 0.34    | % of CPU cores for parallel Encryptable operations        |
-| encryptable.gridfs.threshold  | 1024    | Minimum size (bytes) for GridFS storage                  |
-| encryptable.integrity.check   | true    | Enable/disable integrity checks on entity access         |
-| encryptable.migration         | false   | Enable/disable migration mode for schema/data changes    |
+| Property                    | Default | Description                                              |
+|-----------------------------|---------|----------------------------------------------------------|
+| thread.limit.percentage     | 0.38    | % of CPU cores for parallel Encryptable operations        |
+| encryptable.storage.threshold    | 16384   | Minimum size (bytes) for external storage routing         |
+| encryptable.integrity.check | true    | Enable/disable integrity checks on entity access         |
+| encryptable.migration       | false   | Enable/disable migration mode for schema/data changes    |
 
 ---
 
@@ -179,7 +179,7 @@ set ENCRYPTABLE_MIGRATION=false
 Encryptable’s configuration defaults are chosen to maximize security, reliability, and developer convenience. The framework is security-first, but always flexible:
 
 - **Safe by Default:** Integrity checks are enabled to prevent inconsistencies.
-- **Efficient:** GridFS threshold and thread limit are set to optimize storage and system load.
+- **Efficient:** Storage threshold and thread limit are set to optimize storage and system load.
 - **Adaptable:** All options are runtime-configurable for any workload or risk profile.
 - **Resource-Aware:** The Limited utility methods use thread.limit.percentage to ensure parallelism is safe and predictable for all workloads.
 
@@ -212,4 +212,4 @@ Be sure to update all relevant configuration files and deployment environments.
 
 ---
 
-*Last updated: 2025-11-14*
+*Last updated: 2026-03-02*

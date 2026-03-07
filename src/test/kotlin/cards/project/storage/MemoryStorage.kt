@@ -1,4 +1,4 @@
-package cards.project.mongo.storage
+package cards.project.storage
 
 import tech.wanion.encryptable.storage.Storage
 

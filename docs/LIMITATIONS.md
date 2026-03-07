@@ -50,7 +50,7 @@ Now, with that context in mind, let's examine the specific technical and platfor
 - **Memory Sanitization & JVM Limitations:** JVM memory model makes it impossible to fully erase secrets (see [Why Avoiding Strings for Secrets Is (Nearly) Impossible in Java](WHY_AVOIDING_STRINGS_IS_HARD_IN_JAVA.md))
 - **Class/package immutability:** Cannot rename or move entity classes after data exists; class name and package are used in cryptographic derivation
 - **Limited Identifier support:** Only `CID` identifiers are supported (no UUID, int, etc.)
-- **Secret loss = data loss:** If a user loses their secret, their data is permanently inaccessible; true request-scoped knowledge means the server cannot recover or reset secrets
+- **Secret loss = data loss (without recovery codes):** If a user loses their secret and has no recovery codes, their data is permanently inaccessible; see [Recovery Codes](RECOVERY_CODES.md) for the recommended pattern that preserves transient-knowledge guarantees
 - **Repository methods:** Only `deleteById` is supported for temporary or non-secret-based entities in `EncryptableMongoRepositoryImpl`. Other standard Spring Data methods (`insert`, `findById`, `findAll`, etc.) remain unsupported; use secret-based methods for all sensitive data
 - **No soft delete:** Only hard deletion is supported; soft delete is excluded to uphold the "right to be forgotten."
 - **Migration away from Encryptable:** Lazy migration possible but slow; requires dual systems and depends on user login frequency; bulk migration impossible without breaking request-scoped knowledge
@@ -58,6 +58,9 @@ Now, with that context in mind, let's examine the specific technical and platfor
 - **Indexing encrypted fields:** Cannot index encrypted fields; only unencrypted fields can be indexed
 - **Performance characteristics:** 10–15% overhead due to encryption/decryption; hardware-accelerated on modern processors (AES-NI since 2010+, SHA extensions since 2019+)
 - **AES-GCM all-or-nothing property (universal to all AES-GCM systems):** Single bit corruption causes encrypted field to become unrecoverable (returns encrypted data); entity remains accessible but affected field is lost; requires reliable storage infrastructure and comprehensive backup strategy
+- **Supported `@Encrypt` field types:** Only `String`, `ByteArray`, and `List<String>` are supported for field-level encryption; other types must be serialized manually before encrypting
+- **Orphaned storage references on indirect deletion:** If an entity with storage-backed fields (e.g., GridFS, S3) is deleted outside of Encryptable (e.g., MongoDB TTL expiry, direct database deletion), the associated files in the storage backend will not be cleaned up and will remain as orphaned data
+- **2GB storage field limit:** Storage-backed `ByteArray` fields are limited to ~2GB — the maximum size of a JVM `ByteArray` (`Int.MAX_VALUE` = 2,147,483,647 bytes). This is a JVM platform constraint, not a framework limitation.
 - **Secret rotation:** No built-in automation; must be performed manually or by user-initiated process
 - **Brute-force/DDoS mitigation:** No built-in detection or mitigation; must be handled at the application/infrastructure level
 
@@ -519,9 +522,9 @@ Supporting other ID types would undermine these guarantees and the unique archit
 
 ---
 
-## 🔑 Secret Loss = Data Loss
+## 🔑 Secret Loss — and How to Recover
 
-**If a user loses their secret, their data is permanently inaccessible.** This is by design and a fundamental characteristic of true request-scoped knowledge architecture.
+**Without recovery codes, losing a secret means permanent data loss.** With recovery codes, users have a safe offline recovery path that preserves all transient knowledge guarantees.
 
 Encryptable implements genuine transient knowledge encryption, which means:
 - The server never stores user secrets
@@ -529,20 +532,39 @@ Encryptable implements genuine transient knowledge encryption, which means:
 - The server cannot reset or recover secrets
 - Without the secret, encrypted data cannot be decrypted
 
+The *server* cannot recover secrets — but the *user* can, using recovery codes that are generated at registration, stored offline, and used to drive a standard `rotateSecret` operation when needed.
+
 **Why this limitation exists:**
 
 True request-scoped knowledge architecture requires that the server has **no persistent knowledge** of user secrets. If the server could recover or reset secrets, it would mean the server has access to (or can derive) the secret—which would completely undermine the transient knowledge guarantee.
 
 **Implications:**
 
-- **No "forgot password" functionality** - The server cannot reset secrets because it doesn't store them
-- **No account recovery** - Lost secrets mean permanent data loss
-- **User responsibility** - Users must securely store their secrets (password managers, hardware keys, backups)
+- **No server-side "forgot password"** - The server cannot reset secrets because it doesn't store them
 - **No administrative override** - Even system administrators cannot access user data without secrets
+- **User responsibility** - Users must securely store their secrets (password managers, hardware keys, backups)
 
-**This is a feature, not a bug:**
+**Recoverability without breaking transient knowledge:**
 
-While this may seem like a limitation, it's actually proof that Encryptable provides genuine request-scoped knowledge security:
+Secret loss does **not** have to mean permanent data loss. The framework already provides `rotateSecret`, which re-encrypts all data under a new secret. Recovery codes combine this with a simple offline-key pattern:
+
+1. At registration, the user's current secret is encrypted with several high-entropy one-time codes.
+2. The encrypted slots are stored as `@Encrypt` fields — the server never sees the codes.
+3. When a user loses their secret, they present a recovery code; the framework decrypts the slot to recover the old secret, then immediately calls `rotateSecret` to re-encrypt everything under a new secret.
+4. The used code slot is nulled out — one-time use, no replay.
+
+This preserves all transient knowledge properties: the server sees the secret only during the single rotation request, exactly as in a normal save or update.
+
+> See **[Recovery Codes](RECOVERY_CODES.md)** for the full implementation pattern, security analysis, and checklist.
+
+**What recovery codes cannot do:**
+
+- Recover data if the user never generated recovery codes in the first place
+- Replace a KMS-style server-side reset — that remains impossible by design
+- Work if all recovery codes *and* the secret are lost simultaneously
+
+**This is still a feature, not a bug:**
+
 - Data breaches cannot expose user secrets (server doesn't have them)
 - Governments cannot compel secret disclosure (server doesn't have them)
 - Rogue administrators cannot access user data (secrets required)
@@ -550,22 +572,13 @@ While this may seem like a limitation, it's actually proof that Encryptable prov
 
 **Recommendations:**
 
-1. **Educate users** - Clearly communicate that secret loss = data loss
-2. **Encourage secure storage** - Recommend password managers, hardware keys
-3. **Implement backup mechanisms** - Allow users to create encrypted backups they control
-4. **Consider recovery options** - Implement client-side recovery keys or multi-signature schemes if appropriate for your use case
-5. **Design for usability** - Balance security with user experience (e.g., biometric unlock with secure key storage)
+1. **Generate recovery codes at registration** — while the user still knows their secret
+2. **Show codes once** — with a "I have saved my codes" confirmation step
+3. **Encourage secure storage** — password managers, printed recovery sheets, hardware keys
+4. **Educate users** — losing *all* codes AND the secret means permanent data loss
+5. **Allow code regeneration** — let logged-in users refresh their recovery codes
 
-**Alternative approaches for specific use cases:**
-
-If your application absolutely requires account recovery, you can implement:
-- **Client-side recovery keys** - Users generate and store recovery keys themselves
-- **Social recovery** - Trusted contacts can help recover access (user-controlled, not server-controlled)
-- **Multi-signature schemes** - Require multiple keys for access, with backups distributed
-
-These approaches maintain request-scoped knowledge properties while providing recovery options, but they add complexity and must be carefully designed.
-
-**Bottom line:** Secret loss = data loss is the price of true request-scoped knowledge security. If you need account recovery, you must implement it at the application level in a way that preserves transient knowledge guarantees.
+**Bottom line:** Without recovery codes, secret loss = data loss. With recovery codes, the user has a safe offline recovery path that preserves all transient knowledge guarantees.
 
 ---
 
@@ -666,6 +679,104 @@ Encrypted fields cannot be indexed for fast lookup. This is a direct consequence
 **Recommendations:**
 - Only index fields that remain unencrypted and are intended for querying or filtering.
 - Carefully design your data model to balance privacy and performance needs.
+
+---
+
+## 🔡 Supported `@Encrypt` Field Types
+
+Encryptable's field-level encryption supports only the following field types:
+
+| Type | Supported |
+|---|---|
+| `String` | ✅ |
+| `ByteArray` | ✅ |
+| `List<String>` | ✅ |
+| Other types (e.g., `Int`, `Long`, `custom objects`) | ❌ |
+
+Attempting to annotate an unsupported field type with `@Encrypt` will result in the field being ignored or an error at runtime.
+
+**Workaround:**
+If you need to encrypt a field of an unsupported type, serialize it to a `String` or `ByteArray` first, then annotate that field with `@Encrypt`:
+
+```kotlin
+// Instead of this (not supported):
+// @Encrypt var age: Int? = null
+
+// Do this:
+@Encrypt var age: String? = null // store as "42"
+
+// Or for complex objects, serialize to JSON string:
+@Encrypt var metadata: String? = null // store as JSON
+```
+
+**This is the industry-standard approach.**
+Encrypting `String` and `ByteArray` is the expected and universally accepted way to handle field-level encryption at the ORM/framework level. This is consistent with how every major encryption framework operates:
+
+- **Jasypt** — encrypts `String` fields only.
+- **Spring Security** — encrypts passwords as `String` only.
+- **AWS SDK client-side encryption** — targets `String` and `byte[]`.
+- **Hibernate encryption extensions** — target `String` columns.
+
+**`List<String>` support is a bonus — not commonly provided.**
+Most encryption frameworks don't bother supporting collection types at all. Encryptable includes `List<String>` out of the box, covering a real-world need (tags, roles, multi-value fields) that developers would otherwise have to handle manually.
+
+**Why not other types?**
+Two concrete technical reasons:
+
+1. **Spring Data MongoDB deserialization:** Encryption produces opaque binary output. If Encryptable silently serialized an `Int` or a custom object and stored ciphertext in its place, Spring Data MongoDB would attempt to deserialize raw ciphertext back into the original type on read — and **throw an exception**. There is no safe, transparent way to intercept this without deep framework-level hacks.
+2. **Predictability and type safety:** Supporting arbitrary types would require implicit serialization, which adds hidden complexity, makes data migration fragile, and hides behavior from the developer. Being explicit about supported types keeps the framework honest and its behavior predictable.
+
+---
+
+## 🗑️ Orphaned Storage References on Indirect Deletion
+
+Encryptable automatically cleans up storage-backed fields (GridFS, S3, or any custom backend) when an entity is deleted **through the framework** — via `deleteBySecret()`, `deleteById()`, or cascade delete via `@PartOf`.
+
+However, if an entity is deleted **outside of Encryptable's control**, the associated files in the storage backend will **not** be cleaned up. The entity document is gone, but the storage files remain — orphaned, invisible, and accumulating.
+
+**Common causes:**
+- **MongoDB TTL indexes** — documents expire and are deleted automatically by MongoDB, without Encryptable's lifecycle hooks being triggered.
+- **Direct database deletion** — running `db.collection.deleteOne()` or similar directly in MongoDB bypasses the framework entirely.
+- **Bulk deletions via MongoDB tooling** — any operation that removes documents without going through the repository layer.
+- **Database restore or import** — restoring a backup that predates the storage files.
+
+**Implications:**
+- Storage backend (GridFS, S3, etc.) accumulates orphaned files over time.
+- No automatic detection or cleanup of orphaned files is provided by the framework.
+- For large binary fields, orphaned files can consume significant storage space unnoticed.
+
+**Recommendations:**
+- **Avoid MongoDB TTL indexes on collections with storage-backed entities.** If you need document expiration, implement it at the application level using Encryptable's repository methods so the framework can clean up storage references properly.
+- **Never delete entities directly via MongoDB tooling** if they have storage-backed fields. Always go through the repository layer.
+- **If indirect deletion is unavoidable**, implement a periodic cleanup job that cross-references storage backend files against existing entity documents, and removes any files whose entity no longer exists.
+- **Monitor storage backend size** over time as an early warning signal for orphaned data accumulation.
+
+> **Note:** This is a known and accepted trade-off of the field-as-live-mirror pattern. The framework can only manage lifecycle events it is aware of. Events that bypass the framework, cannot be intercepted.
+
+---
+
+## 📦 ~2GB Storage Field Limit
+
+Storage-backed `ByteArray` fields are limited to approximately **2GB** in size. This is not a framework limitation — it is a **JVM platform constraint**.
+
+**Why 2GB?**
+
+The JVM represents array sizes as a signed 32-bit integer (`Int`). The maximum value of `Int` is `2,147,483,647` — which translates to exactly **2,147,483,647 bytes ≈ 2GB**. A `ByteArray` larger than this cannot be allocated on the JVM, regardless of available memory.
+
+```kotlin
+val maxSize = Int.MAX_VALUE  // 2,147,483,647 bytes ≈ 2GB
+val tooLarge = ByteArray(Int.MAX_VALUE + 1)  // throws OutOfMemoryError or NegativeArraySizeException
+```
+
+**Implications:**
+- Any single storage-backed `ByteArray` field cannot exceed ~2GB.
+- This affects all storage backends equally — GridFS, S3, and custom implementations.
+- Attempting to load a file larger than 2GB into a `ByteArray` will throw an exception at the JVM level, before Encryptable is even involved.
+
+**Workaround:**
+Files larger than ~2GB are **out of scope** for Encryptable. If your application needs to handle files larger than 2GB, you will need to manage that outside of the framework — for example, by splitting the file manually before passing slices to Encryptable, or by using your storage backend's native multipart/streaming API directly.
+
+> **Note:** This is a universal JVM limitation that affects every framework and language running on the JVM. It is not specific to Encryptable, MongoDB, or any storage backend.
 
 ---
 

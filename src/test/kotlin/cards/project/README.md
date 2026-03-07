@@ -38,8 +38,8 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 ### 3. **EncryptableStorageTest.kt** - Large Binary Files
 
-- ✅ Store small binaries in document (<1KB)
-- ✅ Store large binaries in external storage (>1KB)
+- ✅ Store small binaries in document (<16KB)
+- ✅ Store large binaries in external storage (>16KB)
 - ✅ Lazy loading of external storage files
 - ✅ Encrypted vs unencrypted external storage
 - ✅ Update large binary fields
@@ -121,19 +121,15 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 ### 9. **EncryptableSecretRotationTest.kt** - Secret Rotation
 
-- ✅ Rotate a user's secret using `rotateSecret`
-- ✅ Ensure user is not accessible with the old secret after rotation
-- ✅ Ensure user is accessible with the new secret and data is preserved
+- ✅ Rotate a user's secret using `rotateSecret`, ensure old secret no longer works, and verify data is preserved with new secret
 
-**3 tests** covering secret rotation and data integrity after secret update.
+**1 test** covering secret rotation and data integrity after secret update.
 
 ### 10. **EncryptableStorageRotationTest.kt** - Secret Rotation with External Storage Files
 
-- ✅ Rotate secret for entities with large external storage files (>1KB)
-- ✅ Ensure entity is not accessible with the old secret after rotation
-- ✅ Ensure entity is accessible with the new secret and all file data is preserved (both encrypted and unencrypted fields)
+- ✅ Rotate secret for entities with large external storage files (>16KB), ensuring data integrity for both encrypted and unencrypted fields
 
-**3 tests** covering secret rotation and data integrity for entities with large external storage files.
+**1 test** covering secret rotation and data integrity for entities with large external storage files.
 
 ### 11. **CryptoPropertiesTest.kt** - Crypto Properties (Unit)
 
@@ -166,9 +162,42 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 **1 test** demonstrating how to plug in and test a custom storage backend with minimal boilerplate.
 
+### 14. **EncryptableSlicedStorageTest.kt** - Sliced Storage (`@Sliced`)
+
+- ✅ Round-trip — exact multiple of slice size
+- ✅ Round-trip — non-multiple payload, last slice is shorter
+- ✅ `@HKDFId` — each slice is encrypted with entity secret, not master secret
+- ✅ `@Id` — each slice is encrypted with master secret, not CID
+- ✅ Unencrypted `@Sliced` field — slices stored and reassembled as raw bytes
+- ✅ Update — new slices stored atomically, old slices orphan-free
+- ✅ Delete — all slice references removed from storage
+- ✅ Reference header — `originalLength` and slice count are correct
+- ✅ Null assignment — clearing sliced field removes all slices from storage
+
+**9 tests** verifying the full lifecycle of `@Sliced` fields: correctness, key selection, atomic update, orphan-free delete, and reference-header integrity. Bypasses the framework's decrypt path for key-correctness assertions — reads slice ciphertext directly from `MemoryStorageImpl`.
+
+### 15. **EncryptableKeyCorrectnessTest.kt** - Encryption Key Correctness
+
+- ✅ `@HKDFId` inline String uses entity secret, not master secret
+- ✅ `@Id` inline String uses master secret, not CID
+- ✅ `@HKDFId` inline ByteArray uses entity secret, not master secret
+- ✅ `@Id` inline ByteArray uses master secret, not CID
+- ✅ `@HKDFId` storage-backed ByteArray uses entity secret, verified against what was actually stored
+- ✅ `@Id` storage-backed ByteArray uses master secret, verified against what was actually stored
+- ✅ `@HKDFId` inline List\<String\> uses entity secret, verified per element
+- ✅ `@Id` inline List\<String\> uses master secret, verified per element
+- ✅ `@HKDFId` `encryptableListFieldMap` — nested entity secret encrypted with entity secret
+- ✅ `@HKDFId` `encryptableFieldMap` single nested — nested entity secret encrypted with entity secret
+- ✅ `@Id` `encryptableListFieldMap` — nested entity ID stored as plaintext (not encrypted)
+- ✅ `@Id` `encryptableFieldMap` single nested — nested entity ID stored as plaintext (not encrypted)
+- ✅ `@HKDFId` + `@SimpleReference` `encryptableFieldMap` — nested entity ID stored as plaintext, not secret
+- ✅ `@HKDFId` + `@SimpleReference` `encryptableListFieldMap` — nested entity IDs stored as plaintext, not secrets
+
+**14 tests** verifying that the correct encryption key is used for every field type and ID strategy combination, and that `encryptableFieldMap` / `encryptableListFieldMap` store the correct value (encrypted secret for isolated parents, plaintext ID for non-isolated parents and `@SimpleReference` fields). Bypasses the framework's decrypt path entirely — reads raw ciphertext or raw map values directly via reflection.
+
 ## Total Coverage
 
-- **82 test cases** across 14 test files
+- **105 test cases** across 16 test files
 - All major framework features tested
 - Edge cases and error scenarios covered
 - Integration tests for complex workflows
