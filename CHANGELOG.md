@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.7** (2026-01-30) - Polymorphic Relationships Support
 - **1.0.8** (2026-02-27) - Major Improvements & Critical Security Fixes
 - **1.0.9** (2026-03-07) - Minor Fix: Nested Entity IDs Incorrectly Encrypted on `@Id` Parents & Major Test Expansion
+- **1.1.0** (2026-03-19) - ⛔ Incompatible with 1.0.x: BSON Binary subtype `0x04`→custom subtype `128` (user-defined), HKDF context key derivation fix & storage threshold minimum lowered to 1KB (default remains 16KB). No migration path — fresh database required.
 
 ---
 ## [1.0.0] - 2025-12-12 (Initial Release)
@@ -337,6 +338,56 @@ Codepaths covered (105 tests across 16 files):
 
 - **`@Sliced(sizeMB)` annotation:** Splits `ByteArray` fields into independently encrypted slices stored separately in any `IStorage` backend. Enables parallel fetch + decrypt with O(1) memory overhead per slice. Slice size 1–32 MB, default 4 MB. No `IStorage` changes required.
 - **`@SimpleReference` annotation:** Marks a nested `Encryptable` field or `List<Encryptable>` field on an `@HKDFId` parent to store only the child's ID (plaintext) instead of the child's secret (encrypted). Useful for shared references where you do not own the child's secret.
+
+---
+
+## [1.1.0] - 2026-03-19
+
+> **Why is this not 2.0.0?**
+> The HKDF context key derivation change below is a cryptographic breaking change — it invalidates
+> all previously derived keys, CIDs, and encrypted values. Under strict Semantic Versioning this
+> warrants a major version bump. However, Encryptable has no known production deployments at this
+> time, so absorbing the break into 1.1.0 was the pragmatic choice. See the
+> [migration guide](docs/MIGRATING_FROM_OTHER_VERSIONS.md#migrating-to-110-from-109-or-earlier)
+> for full rationale.
+
+### ⚠️ Breaking Changes
+
+#### BSON Binary Subtype: `0x04` → Custom Subtype `128`
+
+- **Changed:** The BSON Binary subtype used to persist `CID` values has been changed from `0x04` (UUID) to custom subtype `128` (user-defined).
+- **Rationale:** 
+  - **Why not 0x03?** Subtype `0x04` causes MongoDB Compass and other tooling to render the bytes as hexadecimal, which is painful to read during debugging. While standard subtype `0x03` (generic binary) is displayed as Base64, using it would be semantically incorrect—CID is not a standard UUID, it's a custom cryptographic identifier. 
+  - **Why custom subtype 128?** MongoDB explicitly reserves subtypes 128+ for user-defined types. Using subtype 128 correctly signals "this is a custom format" to any tool or driver reading the data, while still being displayed as Base64 in MongoDB Compass (the same rendering as 0x03, but with correct semantics). This allows future tools to distinguish CID data from standard UUID data if needed.
+- **Migration:** ⛔ **No migration path.** A mechanical subtype re-encoding would be possible in isolation, but because the HKDF context key derivation also changed in this release, all derived keys and CIDs are already invalidated regardless of the subtype. Providing a partial migration that fixes the subtype while leaving the key derivation broken would be misleading. A fresh database is required.
+
+#### HKDF Context Key Derivation: `source.toString()` → `source.name`
+
+- **Changed:** The class name used as HKDF context during key derivation has been corrected from `source.toString()` (which produced `"class java.lang.String"`) to `source.name` (which produces `"java.lang.String"`). This is a **breaking change** — all previously derived keys (CIDs, secrets, encrypted values) are incompatible with keys derived under the new scheme.
+- **Rationale:** `toString()` on a `Class` object produces an implementation-defined string with a `"class "` prefix; `name` is the canonical, stable, and deterministic class name. The old form was technically incorrect and fragile. Since no production deployments were known at the time of this change, it was the right moment to fix the foundation cleanly.
+- **Migration:** ⛔ **There is no migration path.** Version 1.1.0 is fully incompatible with all prior versions. Existing data cannot be read by 1.1.0. The only path forward is a fresh database. See the [migration guide](docs/MIGRATING_FROM_OTHER_VERSIONS.md#-migrating-to-110-from-109-or-earlier) for details.
+
+### Changes
+
+#### Storage Threshold Minimum Lowered to 1KB
+
+- **Changed:** The minimum configurable storage threshold has been lowered from 16KB (16384 bytes) to 1KB (1024 bytes). The default remains 16KB. Applications using a cost-efficient external storage backend (S3, R2, etc.) can now explicitly set `encryptable.storage.threshold=1024` to route any `ByteArray` field larger than 1KB to external storage.
+- **Rationale:** At scale, database storage is orders of magnitude more expensive per GB than object storage. Routing binary fields to cheap object storage from 1KB onwards keeps database costs flat regardless of entity volume. The default remains 16KB as a safe, performant choice for most applications — particularly those using GridFS, which offers no cost benefit from a lower threshold.
+- **Impact:** No impact unless you explicitly configure the threshold below 16KB.
+
+#### CID Rendering Format Configuration: `encryptable.cid.base64`
+
+- **Added:** New configuration property `encryptable.cid.base64` (default: `true`) controls how `CID.toString()` renders CID values.
+  - `true` (default): CIDs render as **standard Base64 with padding** — matching exactly what MongoDB Compass displays for BSON Binary custom subtype `128` fields. Copy/paste a CID from logs directly into Compass.
+  - `false`: CIDs render as **URL-safe Base64 without padding** (22 characters) — the native CID format, suitable for URLs, QR codes, and external APIs.
+- **Rationale:** MongoDB Compass displays `0x03` binary data as standard Base64 with `=` padding. For developer convenience during debugging, the default aligns string representations between logs and the database tool. Applications exposing CIDs externally can opt into the compact URL-safe format.
+- **String.cid Extension Enhanced:** The `String.cid` extension now accepts 4 input formats for maximum flexibility:
+  - 22 characters: URL-safe Base64 (native format)
+  - 24 characters: Standard Base64 with padding (MongoDB Compass format)
+  - 32 characters: UUID hex without hyphens
+  - 36 characters: Standard UUID format with hyphens
+  - All formats are transparently converted to CID, enabling seamless round-tripping with `CID.toString()` output.
+- **Impact:** Purely opt-in configuration. Default behavior provides better developer experience with Compass.
 
 ---
 

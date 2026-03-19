@@ -58,6 +58,9 @@ object AES256 {
     /** Length of the authentication tag for AES-GCM in bytes. */
     private const val TAG_LENGTH_BYTES: Int = 16
 
+    /** Total overhead added by AES-GCM encryption (IV + authentication tag) in bytes. */
+    const val GCM_OVERHEAD_BYTES: Int = GCM_IV_LENGTH + TAG_LENGTH_BYTES
+
     /** Helper to get a source name. */
     private fun sourceNameFor(source: Any): String = (source as? Class<*>)?.simpleName ?: source::class.java.simpleName
 

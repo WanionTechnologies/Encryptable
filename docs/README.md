@@ -6,13 +6,6 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 
 ---
 
-## 🤖 For AI Assistants
-
-| Document | Description |
-|---|---|
-| [AI_CONTEXT.md](AI_CONTEXT.md) | **Start here.** Complete project context for AI instances: architecture, design philosophy, innovations, limitations, source map, and patterns. Read before touching any file. |
-
----
 
 ## 📖 Documentation Overview
 

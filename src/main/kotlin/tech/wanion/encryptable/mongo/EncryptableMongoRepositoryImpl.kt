@@ -654,7 +654,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         if (entityOpt.isPresent) {
             // If secretAsId is true and the secret is a valid CID and the entity is NOT an @Id entity.
             // return it without restoring as it was looked up by its ID directly.
-            if (secretAsId && secret == id.toString() && metadata.isolated)
+            if (secretAsId && secret == id.toBase64Url() && metadata.isolated)
                 return entityOpt
             val entity = entityOpt.get()
             // Decrypt entity using the provided secret
@@ -720,7 +720,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
                 val id = entity.id as CID
                 // If secretsAsIds is true and the original secret is a valid CID and the entity is NOT an @Id entity.
                 // do not restore it as it was looked up by its ID directly.
-                if (secretsAsIds && cidToOriginalSecret[id] == id.toString() && metadata.isolated)
+                if (secretsAsIds && cidToOriginalSecret[id] == id.toBase64Url() && metadata.isolated)
                     return@forEach
                 restoreMethod.invoke(entity, cidToSecretMap[id])
                 // Track initial hashes and register entity for later change detection; touch() may update audit fields

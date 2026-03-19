@@ -792,7 +792,7 @@ This document provides the architectural rationale for using secrets instead of 
 - **[Transient-Knowledge Authentication](concepts/TRANSIENT_KNOWLEDGE_AUTH.md)** - Complete authentication flow with registration, login, and recovery keys
 
 **Performance & Scalability:**
-- **[GridFS Performance](../examples/03_GridFS.kt)** - Lazy loading, file size thresholds (>16KB), concurrent access patterns
+- **[GridFS Performance](../examples/03_GridFS.kt)** - Lazy loading, file size thresholds (>1KB), concurrent access patterns
 - **[Test Suite](../src/test/kotlin/cards/project/README.md)** - Performance benchmarks and GridFS overhead measurements
 - **[Limitations](LIMITATIONS.md)** - Known performance trade-offs and optimization strategies
 

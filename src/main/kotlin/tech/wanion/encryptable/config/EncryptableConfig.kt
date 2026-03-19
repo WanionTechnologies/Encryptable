@@ -18,7 +18,7 @@ object EncryptableConfig {
 
     /**
      * Storage threshold for storing in Storage vs inline.
-     * Default is 1024 bytes.
+     * Default is 16384 bytes (16KB). Can be configured down to a minimum of 1024 bytes (1KB).
      * See `encryptable.storage.threshold` property.
      */
     val storageThreshold: Int
@@ -37,6 +37,16 @@ object EncryptableConfig {
      */
     val migration: Boolean
 
+    /**
+     * Controls how [tech.wanion.encryptable.mongo.CID.toString] renders a CID.
+     * When true (default), CIDs are rendered as standard Base64 with padding — the same format
+     * MongoDB Compass displays for BSON Binary subtype 0x03 fields, making it easier to copy/paste
+     * values directly between your logs and Compass.
+     * When false, CIDs are rendered as URL-safe Base64 without padding (the native CID format).
+     * See `encryptable.cid.base64` property.
+     */
+    val cidBase64: Boolean
+
     init {
         val environment = getBean(Environment::class.java)
 
@@ -46,10 +56,11 @@ object EncryptableConfig {
         val percentLimit = minOf(environment.getProperty("thread.limit.percentage", String.EMPTY).toFloatOrNull() ?: 0.38f, 1.0f)
         this.threadLimit = maxOf(1, (Runtime.getRuntime().availableProcessors() * percentLimit).toInt())
 
-        // GridFS threshold for storing in External Storage vs regular document
-        // Ensuring a minimum threshold of 16384 bytes (16KB)
-        val gridFsThreshold = environment.getProperty("encryptable.storage.threshold", String.EMPTY).toIntOrNull() ?: 0
-        this.storageThreshold = maxOf(16384, gridFsThreshold)
+        // Storage threshold for routing ByteArray fields to external storage vs inline document.
+        // Default is 16384 bytes (16KB) when not configured.
+        // Can be lowered to a minimum of 1024 bytes (1KB) for cost-optimised external storage backends (e.g. S3, R2).
+        val configuredThreshold = environment.getProperty("encryptable.storage.threshold", String.EMPTY).toIntOrNull()
+        this.storageThreshold = if (configuredThreshold != null) maxOf(1024, configuredThreshold) else 16384
 
         // Should integrity checks be performed on Encryptable entities?
         // Default is true
@@ -60,5 +71,10 @@ object EncryptableConfig {
         // This can be used to conditionally disable certain features or checks during migration for performance reasons.
         // Default is false, and should be set to true during migration processes.
         this.migration = environment.getProperty("encryptable.migration", "false").toBoolean()
+
+        // Controls CID.toString() rendering format.
+        // Default is true: render as standard Base64 with padding, matching what MongoDB Compass displays for BSON Binary custom subtype 128 fields.
+        // Set to false to use URL-safe Base64 without padding (native format).
+        this.cidBase64 = environment.getProperty("encryptable.cid.base64", "true").toBoolean()
     }
 }

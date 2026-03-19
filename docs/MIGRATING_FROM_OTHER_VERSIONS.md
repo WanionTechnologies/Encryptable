@@ -4,7 +4,7 @@ This guide helps you upgrade between different versions of Encryptable.
 
 ---
 
-## Current Version: 1.0.9
+## Current Version: 1.1.0
 
 ---
 
@@ -60,6 +60,52 @@ If you need to rollback after an upgrade:
 ---
 
 ## Version-Specific Migrations
+
+---
+
+### ⛔ Migrating to 1.1.0 (from 1.0.9 or earlier)
+
+> **Why is this not 2.0.0?**
+> The HKDF context key derivation change is a cryptographic breaking change — it invalidates all
+> previously derived keys, CIDs, and encrypted values, making it incompatible with every prior
+> version. Under strict Semantic Versioning, this warrants a major version bump (2.0.0).
+>
+> However, Encryptable has no known production deployments at this point in time. Bumping to 2.0.0
+> for a project with no real users would create unnecessary noise and complicate the version history
+> for the future adopters this project is aimed at. The decision was made to absorb the breaking
+> change into 1.1.0 while the project is still in its early adoption phase, and document it
+> explicitly here so the intent is clear.
+>
+> If you *are* running Encryptable in production and were not consulted about this — please open an
+> issue. This note exists precisely to be transparent about that decision.
+
+#### ⛔ There is no migration path from 1.0.x to 1.1.0.
+
+Version 1.1.0 is **fully incompatible** with all prior versions. The HKDF context key derivation
+change invalidates every derived key, CID, and encrypted value that was ever stored by 1.0.x. There
+is no automated or manual migration that can convert existing data to the new scheme.
+
+**If you are upgrading from 1.0.x:**
+- Your existing encrypted data **cannot be read** by 1.1.0.
+- There is no migration tool, and none is planned.
+- The only path forward is to start fresh with a clean database.
+
+**What changed:**
+1. **Breaking: BSON Binary subtype** — CID values were previously stored as BSON Binary subtype
+   `0x04` (UUID); they are now stored as custom subtype `128` (user-defined). Subtype 128 is
+   reserved by MongoDB for custom applications and allows tools to distinguish CID data from
+   standard UUID data. A mechanical re-encoding of the subtype would technically be possible in
+   isolation, but because the HKDF context key derivation also changed in this release, all
+   derived keys and CIDs are already invalidated regardless. Providing a partial migration that
+   fixes the subtype while leaving the key derivation broken would be misleading — so no migration
+   is offered.
+2. **Breaking: HKDF context key derivation** — The class name passed as HKDF context was changed
+   from `source.toString()` (e.g., `"class java.lang.String"`) to `source.name`
+   (e.g., `"java.lang.String"`). Every derived key, every CID, and every encrypted field is
+   affected.
+3. **Storage threshold minimum lowered to 1KB** — The default remains 16KB. Applications using
+   S3-compatible backends can now explicitly set `encryptable.storage.threshold=1024` to route
+   binary fields to external storage from 1KB. No action required if using the default.
 
 ---
 
@@ -313,8 +359,6 @@ No migration steps are required when moving between these versions.
 
 ---
 
-### Migrating to 1.1.0 (Future)
-*Migration guide will be added when 1.1.0 is released.*
 
 ### Migrating to 2.0.0 (Future)
 *Migration guide will be added when 2.0.0 is released.*

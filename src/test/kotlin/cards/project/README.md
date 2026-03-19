@@ -38,8 +38,8 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 ### 3. **EncryptableStorageTest.kt** - Large Binary Files
 
-- ✅ Store small binaries in document (<16KB)
-- ✅ Store large binaries in external storage (>16KB)
+- ✅ Store small binaries in document (<1KB)
+- ✅ Store large binaries in external storage (>1KB)
 - ✅ Lazy loading of external storage files
 - ✅ Encrypted vs unencrypted external storage
 - ✅ Update large binary fields
@@ -127,7 +127,7 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 ### 10. **EncryptableStorageRotationTest.kt** - Secret Rotation with External Storage Files
 
-- ✅ Rotate secret for entities with large external storage files (>16KB), ensuring data integrity for both encrypted and unencrypted fields
+- ✅ `rotateSecret` should work for entities with Storage files larger than 1KB
 
 **1 test** covering secret rotation and data integrity for entities with large external storage files.
 
@@ -164,6 +164,7 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 ### 14. **EncryptableSlicedStorageTest.kt** - Sliced Storage (`@Sliced`)
 
+- ✅ Round-trip — payload smaller than single slice size (no padding on reassembly)
 - ✅ Round-trip — exact multiple of slice size
 - ✅ Round-trip — non-multiple payload, last slice is shorter
 - ✅ `@HKDFId` — each slice is encrypted with entity secret, not master secret
@@ -174,7 +175,7 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 - ✅ Reference header — `originalLength` and slice count are correct
 - ✅ Null assignment — clearing sliced field removes all slices from storage
 
-**9 tests** verifying the full lifecycle of `@Sliced` fields: correctness, key selection, atomic update, orphan-free delete, and reference-header integrity. Bypasses the framework's decrypt path for key-correctness assertions — reads slice ciphertext directly from `MemoryStorageImpl`.
+**10 tests** verifying the full lifecycle of `@Sliced` fields: correctness, key selection, atomic update, orphan-free delete, and reference-header integrity. Includes critical edge case of sub-slice payloads (ensuring no zero-padding on reassembly). Bypasses the framework's decrypt path for key-correctness assertions — reads slice ciphertext directly from `MemoryStorageImpl`.
 
 ### 15. **EncryptableKeyCorrectnessTest.kt** - Encryption Key Correctness
 
@@ -197,7 +198,7 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 ## Total Coverage
 
-- **105 test cases** across 16 test files
+- **106 test cases** across 16 test files
 - All major framework features tested
 - Edge cases and error scenarios covered
 - Integration tests for complex workflows

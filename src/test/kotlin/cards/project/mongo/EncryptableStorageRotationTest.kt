@@ -11,7 +11,7 @@ class EncryptableGridFSRotationTest : BaseEncryptableTest() {
     lateinit var fileRepository: TestFileRepository
 
     @Test
-    fun `rotateSecret should work for entities with Storage files larger than 16KB`() {
+    fun `rotateSecret should work for entities with Storage files larger than 1KB`() {
         // Arrange
         val oldSecret = generateSecret()
         val newSecret = generateSecret()

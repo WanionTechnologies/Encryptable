@@ -8,7 +8,7 @@ Encryptable is a security-first extension of Spring Data MongoDB that adds encry
 - **Smart polymorphism** – Use abstract types in your code, and the framework automatically preserves concrete types.
 - **Real relationships** – One-to-One, One-to-Many, Many-to-Many with cascade delete (optional).
 - **Automatic Change Detection & Efficient updates** – Only changed fields are sent to the database.
-- **Large file handling** – Store files up to 2GB without managing file I/O. Encryptable automatically handles large files (>16KB) using pluggable storage backends (GridFS out of the box, or bring your own — S3, file system, anything) with encryption and lazy loading.
+- **Large file handling** – Store files up to 2GB without managing file I/O. Any field can act as a mirror for large files, with Encryptable automatically handling storage (using any pluggable backend—GridFS, S3, file system, etc.), encryption, and lazy loading. No backend-specific code required.
 
 All features work through simple annotations—no boilerplate, minimal configuration.
 No crypto expertise required.
@@ -87,7 +87,8 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 ---
 
 ## ✅ Test Runtime
-Test Runtime	✅ 105 passing tests (100%) | 0 failing  
+Test Runtime ✅ 106 passing tests (100%) | 0 failing  
+
 Detailed test overview [here](src/test/kotlin/cards/project/README.md).
 
 ---

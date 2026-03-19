@@ -25,7 +25,7 @@ import tech.wanion.encryptable.util.extensions.*
  *
  * ## Features
  * - **Field-level encryption:** Fields annotated with `@Encrypt` are automatically encrypted/decrypted using AES256.
- * - **Storage integration:** All large ByteArray fields (>16KB) are stored in a storage backend (e.g., S3, GridFS), regardless of whether they are annotated with `@Encrypt`. Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
+ * - **Storage integration:** All large ByteArray fields (>1KB) are stored in a storage backend (e.g., S3, GridFS), regardless of whether they are annotated with `@Encrypt`. Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
  * - **Automatic lifecycle:** On creation, `prepare()` encrypts fields and sets the ID. On retrieval, `restore(secret)` restores and decrypts fields.
  * - **Automagic file retrieval:** Any get request for a large file field is intercepted by `EncryptableFieldGetAspect` and the file is automagically loaded from the storage backend, so you do not need to manually call a load method for these fields.
  * - **Deterministic ID:** ObjectId is generated from a secret, supporting both standard and HKDF-based strategies.
@@ -324,7 +324,7 @@ abstract class Encryptable<T: Encryptable<T>> {
         if (metadata.strategies != Metadata.Strategies.ID)
             throw IllegalStateException("withSecret(CID) can only be used with entities using the @Id strategy.")
         require(this.secret == null) { "The secret is already set for this entity." }
-        this.secret = cid.toString()
+        this.secret = cid.toBase64Url()
         return this as T
     }
 
@@ -571,7 +571,7 @@ abstract class Encryptable<T: Encryptable<T>> {
             val missingSet = missingByType[type] ?: return@forEach
             val typeMetadata = getMetadataFor(type as Class<out Encryptable<*>>)
             if (missingSet.contains(entry.value)) {
-                val cidStr = typeMetadata.strategies.getIDFromSecret(entry.value, type).toString()
+                val cidStr = typeMetadata.strategies.getIDFromSecret(entry.value, type).toBase64Url()
                 removedCidsByType.computeIfAbsent(type) { Collections.synchronizedSet(mutableSetOf()) }.add(cidStr)
                 encryptableFieldMap.remove(entry.key)
             }
@@ -584,7 +584,7 @@ abstract class Encryptable<T: Encryptable<T>> {
             val typeMetadata = getMetadataFor(type)
             val toRemove = secretList.filter { missingSet.contains(it) }
             toRemove.forEach { secret ->
-                val cidStr = typeMetadata.strategies.getIDFromSecret(secret, type).toString()
+                val cidStr = typeMetadata.strategies.getIDFromSecret(secret, type).toBase64Url()
                 removedCidsByType.computeIfAbsent(type) { Collections.synchronizedSet(mutableSetOf()) }.add(cidStr)
             }
             secretList.removeAll(missingSet)
@@ -596,12 +596,12 @@ abstract class Encryptable<T: Encryptable<T>> {
      * Reads or writes fields, encrypting or decrypting those marked with `@Encrypt`
      *
      * **ByteArray fields:**
-     * - Large ByteArray fields (>16KB) are stored in the storage backend, regardless of `@Encrypt` annotation.
+     * - Large ByteArray fields (>1KB) are stored in the storage backend, regardless of `@Encrypt` annotation.
      * - Encryption/decryption of these fields only occurs if they are annotated with `@Encrypt`.
      *
      * **Supported types:**
      * - `String`, `ByteArray`, and `List<String>` fields.
-     * - For ByteArray fields >16KB, stores encrypted data in the storage backend and persists only the ObjectId reference in the entity.
+     * - For ByteArray fields >1KB, stores encrypted data in the storage backend and persists only the ObjectId reference in the entity.
      * - For decryption, restores ObjectId reference for large ByteArray fields, or decrypts directly for smaller fields.
      * - Handles nested objects and lists recursively if annotated with `@Encrypt`.
      *
@@ -627,7 +627,7 @@ abstract class Encryptable<T: Encryptable<T>> {
                 encryptableFieldMap[fieldName] =
                     if (this.metadata.isolated && !simpleReference) innerEncryptable.secret
                         ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its secret set.")
-                    else innerEncryptable.id?.toString()
+                    else innerEncryptable.id?.toBase64Url()
                         ?: throw IllegalStateException("Inner Encryptable \"$fieldName\" must have its id set.")
                 if (innerEncryptable.javaClass != field.type)
                     encryptableFieldTypeMap[fieldName] = innerEncryptable.javaClass.name
@@ -646,7 +646,7 @@ abstract class Encryptable<T: Encryptable<T>> {
                     val secretOrId =
                         if (this.metadata.isolated && !simpleReference) item.secret
                             ?: throw IllegalStateException("Inner Encryptable at index $index in list \"$fieldName\" must have its secret set.")
-                        else item.id?.toString()
+                        else item.id?.toBase64Url()
                             ?: throw IllegalStateException("Inner Encryptable at index $index in list \"$fieldName\" must have its id set.")
                     encryptableListFieldMap[fieldName]?.add(secretOrId)
                 }

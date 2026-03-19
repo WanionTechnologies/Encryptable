@@ -215,7 +215,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
 
     @Test
     fun `@HKDFId entity - encrypted bytes inline use entity secret, not master secret`() {
-        // Given — 512 bytes, well below the 16KB inline threshold
+        // Given — 512 bytes, well below the 1KB inline threshold
         val secret = generateSecret()
         val originalBytes = ByteArray(512).also { secureRandom.nextBytes(it) }
 
@@ -321,7 +321,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
 
     @Test
     fun `@HKDFId entity - large encrypted bytes (above threshold) also use entity secret`() {
-        // Given — 256KB, above the 16KB threshold (stored in storage backend)
+        // Given — 256KB, above the 1KB threshold (stored in storage backend)
         val secret = generateSecret()
         val originalBytes = createSampleBytes(256)
         val entity = TestUser().withSecret(secret).apply {
@@ -389,7 +389,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
 
     @Test
     fun `@Id entity - large encrypted bytes (above threshold) also use master secret`() {
-        // Given — 256KB, above the 16KB threshold (stored in storage backend)
+        // Given — 256KB, above the 1KB threshold (stored in storage backend)
         val cid = CID.randomCIDString()
         val originalBytes = createSampleBytes(256)
         val entity = TestIdEncryptEntity().withSecret(cid).apply {
@@ -684,7 +684,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
         idNestedRepository.save(parent)
 
         // After save the nested item has its ID assigned — that is what was stored in the map.
-        val nestedItemId = item.id?.toString()
+        val nestedItemId = item.id?.toBase64Url()
         assertNotNull(nestedItemId, "Nested item must have its ID assigned after parent save")
 
         // Read encryptableListFieldMap directly via reflection
@@ -732,7 +732,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
         idNestedRepository.save(parent)
 
         // After save the nested address has its ID assigned — that is what the framework stored.
-        val nestedAddressId = address.id?.toString()
+        val nestedAddressId = address.id?.toBase64Url()
         assertNotNull(nestedAddressId, "Nested address must have its ID assigned after parent save")
 
         // Read encryptableFieldMap directly via reflection
@@ -778,7 +778,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
         simpleRefRepository.save(parent)
 
         // After save the nested child has its ID assigned
-        val childId = child.id?.toString()
+        val childId = child.id?.toBase64Url()
         assertNotNull(childId, "Nested child must have its ID assigned after parent save")
 
         // Read encryptableFieldMap directly via reflection
@@ -827,7 +827,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
         simpleRefRepository.save(parent)
 
         // After save the nested item has its ID assigned
-        val itemId = item.id?.toString()
+        val itemId = item.id?.toBase64Url()
         assertNotNull(itemId, "Nested item must have its ID assigned after parent save")
 
         // Read encryptableListFieldMap directly via reflection

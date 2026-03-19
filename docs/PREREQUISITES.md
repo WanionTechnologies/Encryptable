@@ -59,12 +59,12 @@ To add the Encryptable Starter to your project, use:
 ```kotlin
 dependencies {
     // Encryptable Starter (includes all required dependencies)
-    implementation("tech.wanion:encryptable-starter:1.0.9")
+    implementation("tech.wanion:encryptable-starter:1.1.0")
   
     // Encryptable Aspects
-    aspect("tech.wanion:encryptable:1.0.9")
+    aspect("tech.wanion:encryptable:1.1.0")
     // Encryptable Aspects for Tests
-    testAspect("tech.wanion:encryptable:1.0.9")
+    testAspect("tech.wanion:encryptable:1.1.0")
 }
 ```
 

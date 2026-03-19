@@ -12,6 +12,8 @@ Modern applications often need to store large binary data (such as files, images
 - **Supporting multiple storage backends** (e.g., MongoDB GridFS, S3, file system, or custom solutions).
 - **Enabling lazy loading and efficient cleanup of large binary fields.**
 - **Allowing users to extend or replace storage mechanisms without modifying core framework logic.**
+- **Reducing infrastructure cost at scale** — database storage is orders of magnitude more expensive per GB than object storage. Routing binary fields to external storage from 1KB onwards keeps database costs flat, even with millions of entities.
+  > ⚠️ **This cost benefit does not apply to GridFS.** GridFS is still MongoDB — data stored in GridFS counts against your MongoDB storage quota and is billed at the same rate as any other MongoDB data. The cost savings only materialise when using a genuinely external and cheaper backend such as S3, Cloudflare R2, Backblaze B2, or any other object storage service. If cost is a concern, prefer an S3-compatible backend over GridFS.
 
 ## 🪞 The Field-as-Live-Mirror
 
@@ -67,7 +69,9 @@ Encryptable provides a ready-to-use storage backend based on MongoDB GridFS, cal
   - `GridFSStorage` integrates seamlessly with Encryptable, allowing you to store large binary data (such as files, images, or documents) without worrying about database size limits or performance issues.
 - **Benefits:**
   - No additional setup required — works out of the box with MongoDB.
-  - **No annotation needed** — any `ByteArray` field above the configured threshold (default: 16KB) is automatically routed to GridFS.
+  - **No annotation needed** — any `ByteArray` field above the configured threshold (default: 1KB) is automatically routed to GridFS.
+  - **The 1KB default is a cost decision:** at scale, database storage (MongoDB, PostgreSQL, etc.) is orders of magnitude more expensive per GB than object storage (S3, GridFS, R2, etc.). Storing millions of small binary fields inline in the database adds up quickly. Routing them to cheap object storage from 1KB onwards keeps database costs flat regardless of how many entities are stored.
+  > ⚠️ **GridFS does not provide this cost benefit.** GridFS is a MongoDB feature — binary data stored in GridFS still resides in your MongoDB cluster and is billed at MongoDB storage rates, the same as any other document. The cost advantage of the 1KB threshold only applies when using a genuinely external object storage backend (S3, R2, Backblaze B2, Wasabi, etc.). GridFS is still the right choice for applications already on MongoDB that need large file support without adding another infrastructure dependency — but it is not a cost optimisation.
   - Supports lazy loading, efficient cleanup, and automatic management of large binary fields.
   - Ensures binary data is stored securely and efficiently alongside your encrypted entities.
 - **When to use:**

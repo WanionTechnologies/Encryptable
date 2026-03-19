@@ -6,7 +6,7 @@ import ch.qos.logback.core.ConsoleAppender
 import org.slf4j.LoggerFactory
 import org.springframework.boot.CommandLineRunner
 import org.springframework.stereotype.Component
-import tech.wanion.encryptable.mongo.migration.Migration108to109
+import tech.wanion.encryptable.mongo.migration.Migration
 import kotlin.system.exitProcess
 
 @Component
@@ -91,11 +91,10 @@ class EncryptableRunner : CommandLineRunner {
         val integrityCheckStatus = if (EncryptableConfig.integrityCheck) "enabled" else "disabled"
         logger.info("- Entity Integrity Check is $integrityCheckStatus.")
         logger.info("- Storage Threshold is set to ${EncryptableConfig.storageThreshold} bytes.")
+        val cidBase64Status = if (EncryptableConfig.cidBase64) "enabled" else "disabled"
+        logger.info("- CID.toString() as Base64 is $cidBase64Status.")
         val migrationStatus = if (EncryptableConfig.migration) "enabled" else "disabled"
         logger.info("- Migration is $migrationStatus.")
-        logger.info("- ⚠️ Version 1.0.9 requires migration for:")
-        logger.info("-   @Id entities with nested List<out Encryptable>.")
-        logger.info("- See CHANGELOG.md for more details and new features.")
         logger.info(line)
         if (!EncryptableConfig.migration || isTestEnvironment())
             return
@@ -107,7 +106,12 @@ class EncryptableRunner : CommandLineRunner {
 
     /** Performs database migration if needed */
     private fun migrate() {
-        val migrations = listOf(Migration108to109())
+        val migrations = listOf<Migration>()
+        // just to make a tiny bit easier when in case there is need for a migration.
+        if (migrations.isEmpty()) {
+            logger.info("- No migrations defined. Current database is compatible with this version of Encryptable.")
+            return
+        }
         var anyRan = false
         migrations.forEach { migration ->
             if (!migration.shouldMigrate()) return@forEach

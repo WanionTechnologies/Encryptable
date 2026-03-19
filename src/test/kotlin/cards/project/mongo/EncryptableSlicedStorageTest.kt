@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import tech.wanion.encryptable.MasterSecretHolder
 import tech.wanion.encryptable.mongo.CID
+import tech.wanion.encryptable.storage.SlicedResult
 import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.AES256
 import tech.wanion.encryptable.util.extensions.metadata
@@ -37,7 +38,13 @@ import tech.wanion.encryptable.util.extensions.metadata
  *
  * ### Round-trip and reassembly
  * Save a known payload, reload it, assert byte-for-byte equality. This catches any
- * slice boundary off-by-one, wrong slice order, or truncated last slice.
+ * slice boundary off-by-one, wrong slice order, or truncated last slice. Three payload
+ * sizes are covered:
+ *   - **Sub-slice** (512 KB < 2 MB slice size): exactly 1 slice — reassembly must not
+ *     pad the output to `sliceSizeBytes`.
+ *   - **Exact multiple** (4 MB = 2 × 2 MB): no partial last slice.
+ *   - **Non-multiple** (5 MB = 2 × 2 MB + 1 MB partial): partial last slice must be
+ *     trimmed using `originalLength`, not zero-padded.
  *
  * ### Multi-slice boundary
  * Use a payload whose size is not a clean multiple of the slice size, so the last slice is
@@ -84,6 +91,65 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
      * Used to compute expected slice count and to locate individual slice boundaries.
      */
     private val sliceSizeBytes = 2 * 1024 * 1024
+
+    // -------------------------------------------------------------------------
+    // Round-trip — payload is smaller than a single slice (1 slice, no padding)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `round-trip - payload smaller than single slice size`() {
+        // Given — 512 KB, well below the 2 MB slice size → must produce exactly 1 slice.
+        // This is a critical edge case: the single slice is shorter than sliceSizeBytes, so
+        // the reassembly must use originalLength from the reference header to trim the output
+        // instead of returning a zero-padded 2 MB array.
+        val secret = generateSecret()
+        val original = createSampleBytes(512)
+        val entity = TestSlicedEntity().withSecret(secret).apply {
+            name = "sub-slice-size"
+            slicedContent = original
+        }
+
+        // When
+        slicedRepository.save(entity)
+        val retrieved = slicedRepository.findBySecretOrNull(secret)
+
+        // Then — round-trip is byte-for-byte correct
+        assertNotNull(retrieved, "Entity must be retrievable")
+        assertNotNull(retrieved!!.slicedContent, "slicedContent must not be null after reload")
+        assertEquals(original.size, retrieved.slicedContent!!.size, "Reassembled size must equal original — must not be padded to sliceSizeBytes")
+        assertArrayEquals(original, retrieved.slicedContent, "Reassembled payload must equal original")
+
+        // Then — reference header reports exactly 1 slice
+        val slicedResult = storageHandler.getSlices(entity, "slicedContent")
+        assertNotNull(slicedResult)
+
+        slicedResult as SlicedResult
+
+        assertEquals(1, slicedResult.references.size, "Payload smaller than sliceSizeBytes must produce exactly 1 slice")
+        assertEquals(original.size, slicedResult.originalLength, "originalLength in the reference header must equal the original payload size")
+
+        val slicedField = storageHandler.getField(TestSlicedEntity::class.java, "slicedContent")
+        assertNotNull(slicedField, "Field must be available for slicedContent")
+
+        val storage = storageHandler.getStorageForField(slicedField)
+        assertNotNull(storage, "Storage must be available for slicedContent field")
+
+        val reference = storage.createReference(slicedResult.references[0])
+        assertNotNull(reference, "Reference for the single slice must be valid")
+
+        val sliceBytes = storage.read(slicedField.metadata, reference as Any)
+        assertNotNull(sliceBytes, "Storage must return bytes for the single slice")
+
+        sliceBytes as ByteArray
+
+        // The stored slice includes the AES-GCM overhead, so it should be original size + overhead
+        val expectedSliceSize = original.size + AES256.GCM_OVERHEAD_BYTES
+
+        assertEquals(expectedSliceSize, sliceBytes.size, "Stored slice size must equal original size plus AES-GCM overhead for a single slice")
+
+        // Cleanup
+        slicedRepository.deleteBySecret(secret)
+    }
 
     // -------------------------------------------------------------------------
     // Round-trip — payload is an exact multiple of slice size

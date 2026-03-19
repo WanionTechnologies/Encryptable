@@ -613,7 +613,7 @@ val pdf = retrieved.pdfContent  // Fetched, decrypted, returned. One line.
 
 When you assign a `ByteArray` to a storage-backed field, Encryptable:
 
-1. Detects whether the data exceeds the inline threshold (configurable, default 16KB)
+1. Detects whether the data exceeds the inline threshold (configurable, default 1KB)
 2. Encrypts the bytes if `@Encrypt` is present (AES-256-GCM)
 3. Stores them in the configured backend (GridFS, S3, or custom)
 4. Saves a compact reference (up to 16 bytes) in the entity document
@@ -629,7 +629,7 @@ When you assign a `ByteArray` to a storage-backed field, Encryptable:
    // Small data → stored inline in the document
    var thumbnail: ByteArray? = null  // 512 bytes → stays in MongoDB document
 
-   // Large data → stored externally (default threshold: 16KB, configurable)
+   // Large data → stored externally (default threshold: 1KB, configurable)
    var video: ByteArray? = null  // 100 MB → goes to storage backend
 
    // Developer doesn't decide. The framework decides based on size.

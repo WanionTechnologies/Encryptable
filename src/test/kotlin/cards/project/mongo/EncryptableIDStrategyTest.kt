@@ -89,7 +89,7 @@ class EncryptableIDStrategyTest : BaseEncryptableTest() {
         // Then - ID should be the secret itself converted to CID
         assertNotNull(entity.id)
         // Verify ID matches the CID derived from secret
-        assertEquals(cidString, entity.id.toString())
+        assertEquals(cidString, entity.id?.toBase64Url())
 
         // Cleanup
         directIdRepository.deleteBySecret(cidString)

@@ -1,6 +1,7 @@
 package tech.wanion.encryptable.mongo
 
 import org.bson.types.Binary
+import tech.wanion.encryptable.config.EncryptableConfig
 import tech.wanion.encryptable.util.SecurityUtils
 import tech.wanion.encryptable.util.extensions.decodeUrl64
 import tech.wanion.encryptable.util.extensions.encodeURL64
@@ -77,20 +78,48 @@ class CID(bytes: ByteArray) {
          * Creates an CID from a URL-safe Base64 string (22 characters, no padding).
          * @throws IllegalArgumentException if the decoded array is not 16 bytes.
          */
-        fun fromBase64(base64: String): CID = base64.decodeUrl64().cid
+        fun fromBase64Url(base64: String): CID = base64.decodeUrl64().cid
 
         /**
-         * Extension function to convert a URL-safe Base64 string to an CID.
-         * Usage: val cid = myString.cid
-         *
-         * The input string must be a 22-character URL-safe Base64 encoding (no padding) representing exactly 16 bytes.
-         * If the string is not valid Base64, or not exactly 22 characters, or does not decode to 16 bytes,
-         * this property will throw an IllegalArgumentException.
-         *
-         * @throws IllegalArgumentException if the decoded array is not 16 bytes or the input is not a valid 22-character Base64 string.
+         * Creates an CID from standard Base64 with padding (the format displayed by MongoDB Compass).
+         * This is a convenience function for converting MongoDB Compass-displayed CIDs back to native format.
+         * @throws IllegalArgumentException if the decoded array is not 16 bytes.
          */
-        val String.cid: CID
-            get() = fromBase64(this)
+        fun fromBase64Padded(base64: String): CID = Base64.getDecoder().decode(base64).cid
+
+        /**
+         * Extension function to convert a Base64 or hex string to a CID.
+         *
+         * **Accepts multiple formats:**
+         * - **22 characters**: URL-safe Base64 without padding (native CID format) — `"ABC123_-xyz..."`
+         * - **24 characters**: Standard Base64 with padding (MongoDB Compass format) — `"ABC123/+xyz=="`
+         * - **32 characters**: Hexadecimal UUID without hyphens — `"550e8400e29b41d4a716446655440000"`
+         * - **36 characters**: Standard UUID format with hyphens — `"550e8400-e29b-41d4-a716-446655440000"`
+         *
+         * This flexibility allows seamless round-tripping with [CID.toString] output and conversion from UUID format:
+         * - When `true` (default): `toString()` produces standard Base64 (24 chars) → `"ABC123/+xyz==".cid` works
+         * - When `false`: `toString()` produces URL-safe Base64 (22 chars) → `"ABC123_-xyz...".cid` works
+         * - Always works: UUID formats → `"550e8400e29b41d4a716446655440000".cid` or `"550e8400-e29b-41d4-a716-446655440000".cid`
+         *
+         * @throws IllegalArgumentException if the input is not a valid CID string:
+         *   - Not exactly 22, 24, 32, or 36 characters
+         *   - Invalid Base64 or UUID/hex encoding
+         *   - Does not decode to exactly 16 bytes
+         *
+         * @see [CID.toString] for format controlled by `encryptable.cid.base64` config
+         * @see [toBase64Padded] to explicitly get standard Base64 format
+         */
+        val String.cid: CID get() = when(this.length) {
+            22 -> fromBase64Url(this)
+            24 -> fromBase64Padded(this)
+            32, 36 -> {
+                // Handle both 32-char (no hyphens) and 36-char (with hyphens) UUID hex formats
+                val normalized = if (this.length == 36) this else
+                    this.replaceRange(8, 8, "-").replaceRange(13, 13, "-").replaceRange(18, 18, "-").replaceRange(23, 23, "-")
+                UUID.fromString(normalized).cid
+            }
+            else -> throw IllegalArgumentException("Invalid CID string length: expected 22 (URL-safe Base64), 24 (standard Base64 with padding), 32 (UUID hex), or 36 (standard UUID), got ${this.length}")
+        }
 
         /**
          * Extension function to convert a 16-byte array to an EID.
@@ -123,28 +152,63 @@ class CID(bytes: ByteArray) {
                 return CID(bb.array())
             }
 
-        /** Byte value for BSON Binary subtype 0x04. */
-        private const val FOUR_AS_BYTE = 4.toByte()
-
         /**
-         * Converts this CID to a BSON Binary with subtype 0x04.
+         * Custom BSON Binary subtype 128 (user-defined) for CID format.
+         *  We use a custom subtype rather than standard 0x04 (UUID) because CID is not a standard UUID,
+         *  but a custom cryptographic identifier. MongoDB reserves subtypes 128+ for user-defined types.
+         *  This allows tools and systems to distinguish CID data from standard UUID data.
          */
-        val CID.binary: Binary get() = Binary(FOUR_AS_BYTE, bytes)
+        private const val CID_BSON_SUBTYPE = 128.toByte()
 
         /**
-         * Converts a BSON Binary with subtype 0x04 to a CID.
-         * @throws IllegalArgumentException if the Binary subtype is not 0x04.
+         * Converts this CID to a BSON Binary with custom subtype 128 (user-defined).
+         */
+        val CID.binary: Binary get() = Binary(CID_BSON_SUBTYPE, bytes)
+
+        /**
+         * Converts a BSON Binary with custom subtype 128 to a CID.
+         * @throws IllegalArgumentException if the Binary subtype is not 128.
          */
         val Binary.cid: CID get() {
-            require(this.type == FOUR_AS_BYTE) { "Expected BSON Binary subtype 0x04 for CID" }
+            require(this.type == CID_BSON_SUBTYPE) { "Expected BSON Binary subtype 128 (custom/user-defined) for CID" }
             return fromBytes(this.data)
         }
     }
 
     /**
-     * Returns the URL-safe Base64 string representation of this CID (22 characters, no padding).
+     * Returns the string representation of this CID.
+     *
+     * **Format behavior (changed in version 1.1.0):**
+     * - Before 1.1.0: Always returned URL-safe Base64 (22 characters)
+     * - From 1.1.0 onwards: Format depends on the `encryptable.cid.base64` configuration:
+     *   - `true` (default): standard Base64 with padding — matches MongoDB Compass display for BSON Binary custom subtype 128
+     *   - `false`: URL-safe Base64 without padding (22 characters) — the previous default behavior
+     *
+     * Use [toBase64Url] to explicitly get the URL-safe format, or [toBase64Padded] for the standard format.
      */
-    override fun toString(): String = bytes.encodeURL64()
+    override fun toString(): String =
+        if (EncryptableConfig.cidBase64) toBase64Padded() else toBase64Url()
+
+    /**
+     * Returns the URL-safe Base64 representation of this CID without padding (22 characters).
+     * This was the default format until the `encryptable.cid.base64` configuration was introduced in version 1.1.0.
+     * This is always the native CID format, regardless of the current configuration.
+     *
+     * Use this when you need the compact format for URLs, QR codes, or external APIs.
+     *
+     * @return URL-safe Base64-encoded string (no padding)
+     */
+    fun toBase64Url(): String = bytes.encodeURL64()
+
+    /**
+     * Returns the standard Base64 representation of this CID with padding (24 characters).
+     * This is the format displayed by MongoDB Compass for BSON Binary custom subtype 128 fields.
+     *
+     * Use this when debugging or interoperating with systems that expect standard Base64 format.
+     *
+     * @return Standard Base64-encoded string (with padding)
+     */
+    fun toBase64Padded(): String = Base64.getEncoder().encodeToString(bytes)
 
     /**
      * Checks equality based on the underlying byte array content.

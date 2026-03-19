@@ -7,7 +7,7 @@ import tech.wanion.encryptable.mongo.CID
 import tech.wanion.encryptable.mongo.CID.Companion.cid
 
 /**
- * MongoDB read converter: BSON Binary (subtype 4) -> CID
+ * MongoDB read converter: BSON Binary (custom subtype 128) -> CID
  */
 @ReadingConverter
 class CIDFromBinary : Converter<Binary, CID> {

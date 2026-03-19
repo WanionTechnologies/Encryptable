@@ -131,7 +131,7 @@ class EncryptableFieldAspect {
                 encryptableFieldMap[fieldName] =
                     if (Encryptable.getMetadataFor(newEntity).isolated) Encryptable.getUnsafeSecretOf(newEntity)
                         ?: throw IllegalStateException("New entity must have a secret after save.")
-                    else newEntity.id?.toString()
+                    else newEntity.id?.toBase64Url()
                         ?: throw IllegalStateException("New entity must have an ID after save.")
                 if (newEntity.javaClass != fieldType) {
                     // Store the actual type for future reference
@@ -169,7 +169,7 @@ class EncryptableFieldAspect {
                     encryptableFieldMap[fieldName] =
                         if (Encryptable.getMetadataFor(newEntity).isolated) Encryptable.getUnsafeSecretOf(newEntity)
                             ?: throw IllegalStateException("New entity must have a secret after save.")
-                        else newEntity.id?.toString()
+                        else newEntity.id?.toBase64Url()
                             ?: throw IllegalStateException("New entity must have an ID after save.")
                     if (newEntity.javaClass != fieldType)
                         // Store the actual type for future reference

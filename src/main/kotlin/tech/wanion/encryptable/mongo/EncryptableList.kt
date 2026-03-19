@@ -437,7 +437,7 @@ class EncryptableList<T: Encryptable<T>>(
      */
     private fun resolveSecret(element: T): String {
         val elementSecret = Encryptable.getUnsafeSecretOf(element)
-        return elementSecret ?: element.id?.toString()
+        return elementSecret ?: element.id?.toBase64Url()
             ?: throw IllegalStateException("Encryptable Element must at least have an ID.")
     }
 }
