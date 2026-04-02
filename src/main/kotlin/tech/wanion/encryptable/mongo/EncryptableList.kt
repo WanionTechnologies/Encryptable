@@ -1,12 +1,13 @@
 package tech.wanion.encryptable.mongo
 
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 import tech.wanion.encryptable.EncryptableContext
 import tech.wanion.encryptable.util.Limited.parallelForEach
-import tech.wanion.encryptable.util.extensions.readField
 import tech.wanion.encryptable.util.extensions.isListOf
+import tech.wanion.encryptable.util.extensions.readField
 import tech.wanion.encryptable.util.extensions.typeParameter
+import tech.wanion.encryptable.util.extensions.unreflect
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * # EncryptableList
@@ -83,6 +84,10 @@ class EncryptableList<T: Encryptable<T>>(
     fieldName: String,
     val encryptable: Encryptable<*>
 ) : MutableList<T> {
+    companion object {
+        private val throwIfReadOnlyMethod = Encryptable::class.java.getDeclaredMethod("throwIfReadOnly").unreflect()
+    }
+
     /** Lock for thread-safety. */
     private val lock = ReentrantLock()
     /** The underlying list of secrets backing this EncryptableList. */
@@ -178,6 +183,7 @@ class EncryptableList<T: Encryptable<T>>(
             override fun hasNext() = lock.withLock { current < size }
             override fun next() = lock.withLock { get(current++) }
             override fun remove(): Unit = lock.withLock {
+                throwIfReadOnly()
                 val toRemove = get(current - 1)
                 try {
                     if (partOf)
@@ -282,6 +288,7 @@ class EncryptableList<T: Encryptable<T>>(
      * @return true (as per [MutableList] contract).
      */
     override fun add(element: T): Boolean = lock.withLock {
+        throwIfReadOnly()
         try {
             val isNew = Encryptable.isNew(element)
             // only save if it is new
@@ -302,6 +309,7 @@ class EncryptableList<T: Encryptable<T>>(
      * @throws IndexOutOfBoundsException if [index] is out of bounds.
      */
     override fun add(index: Int, element: T) = lock.withLock {
+        throwIfReadOnly()
         try {
             val isNew = Encryptable.isNew(element)
             // only save if it is new
@@ -321,6 +329,7 @@ class EncryptableList<T: Encryptable<T>>(
      * @return true if the list was changed.
      */
     override fun addAll(elements: Collection<T>): Boolean = lock.withLock {
+        throwIfReadOnly()
         if (elements.isEmpty())
             return false
         try {
@@ -347,6 +356,7 @@ class EncryptableList<T: Encryptable<T>>(
      * @return true if the list was changed.
      */
     override fun addAll(index: Int, elements: Collection<T>): Boolean = lock.withLock {
+        throwIfReadOnly()
         try {
             val newList = elements.filter { element -> Encryptable.isNew(element) }
             newList.parallelForEach {
@@ -366,6 +376,7 @@ class EncryptableList<T: Encryptable<T>>(
      * Removes all elements from the list.
      */
     override fun clear() = lock.withLock {
+        throwIfReadOnly()
         try {
             if (partOf)
                 encryptableMongoRepository.deleteBySecrets(secretList)
@@ -383,6 +394,7 @@ class EncryptableList<T: Encryptable<T>>(
      * @throws IndexOutOfBoundsException if [index] is out of bounds.
      */
     override fun removeAt(index: Int): T = lock.withLock {
+        throwIfReadOnly()
         val old = get(index)
         try {
             if (partOf)
@@ -430,6 +442,7 @@ class EncryptableList<T: Encryptable<T>>(
 
     /**
      * Helper method to get the secret of an element, handling both isolated and non-isolated cases.
+     * obs: this needs the actual secret.
      *
      * @param element the Encryptable element to get the secret for
      * @return the secret string for the element
@@ -440,4 +453,9 @@ class EncryptableList<T: Encryptable<T>>(
         return elementSecret ?: element.id?.toBase64Url()
             ?: throw IllegalStateException("Encryptable Element must at least have an ID.")
     }
+
+    /**
+     * Helper method to throw an exception if the parent encryptable is read-only.
+     */
+    private fun throwIfReadOnly() = throwIfReadOnlyMethod.invoke(encryptable)
 }

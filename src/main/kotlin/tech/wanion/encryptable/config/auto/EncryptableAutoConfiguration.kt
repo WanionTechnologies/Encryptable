@@ -9,7 +9,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import tech.wanion.encryptable.EncryptableContext
 import tech.wanion.encryptable.config.EncryptableMongoConfiguration
-import tech.wanion.encryptable.mongo.EncryptableInterceptor
+import tech.wanion.encryptable.EncryptableInterceptor
 import tech.wanion.encryptable.util.extensions.zerify
 
 /**

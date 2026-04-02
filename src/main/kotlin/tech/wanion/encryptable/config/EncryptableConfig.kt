@@ -38,7 +38,7 @@ object EncryptableConfig {
     val migration: Boolean
 
     /**
-     * Controls how [tech.wanion.encryptable.mongo.CID.toString] renders a CID.
+     * Controls how [tech.wanion.encryptable.CID.toString] renders a CID.
      * When true (default), CIDs are rendered as standard Base64 with padding — the same format
      * MongoDB Compass displays for BSON Binary subtype 0x03 fields, making it easier to copy/paste
      * values directly between your logs and Compass.
@@ -58,7 +58,7 @@ object EncryptableConfig {
 
         // Storage threshold for routing ByteArray fields to external storage vs inline document.
         // Default is 16384 bytes (16KB) when not configured.
-        // Can be lowered to a minimum of 1024 bytes (1KB) for cost-optimised external storage backends (e.g. S3, R2).
+        // Can be lowered to a minimum of 1024 bytes (1KB) for cost-optimized external storage backends (e.g. S3, R2).
         val configuredThreshold = environment.getProperty("encryptable.storage.threshold", String.EMPTY).toIntOrNull()
         this.storageThreshold = if (configuredThreshold != null) maxOf(1024, configuredThreshold) else 16384
 

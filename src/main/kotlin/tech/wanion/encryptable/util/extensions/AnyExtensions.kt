@@ -1,7 +1,10 @@
 package tech.wanion.encryptable.util.extensions
 
 import tech.wanion.encryptable.EncryptableContext
+import java.lang.invoke.MethodHandle
+import java.lang.invoke.MethodHandles
 import java.lang.reflect.Field
+import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -47,3 +50,21 @@ fun <R> Any.readField(fieldName: String): R {
  * @return A string representing the metadata of the field.
  */
 val Field.metadata: String get() = "${this.declaringClass.name}/${this.name}"
+
+/**
+ * Converts this Method to a MethodHandle that throws the exact same exception instead of wrapping it in InvocationTargetException.
+ *
+ * When using Method.invoke(), any exceptions are wrapped in InvocationTargetException.
+ * When using a MethodHandle from unreflect(), exceptions are thrown directly without wrapping.
+ *
+ * Additionally, MethodHandles provide significant performance benefits over Method.invoke() by offering
+ * near-native method access performance, making them ideal for performance-critical paths in the framework.
+ *
+ * @receiver The Method to convert to a MethodHandle.
+ * @return A MethodHandle that invokes this method and throws unwrapped exceptions.
+ */
+fun Method.unreflect(): MethodHandle {
+    this.isAccessible = true
+    val lookup = MethodHandles.lookup()
+    return lookup.unreflect(this)
+}

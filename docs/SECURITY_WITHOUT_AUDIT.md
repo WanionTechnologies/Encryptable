@@ -42,7 +42,7 @@
 - ✅ Dependency and OS patching; backups tested
 
 Strong secrets
-- Enforce minimum 32 characters for @HKDFId secrets (256 bits) and 22 characters for @Id (128 bits), automatically validated for entropy ≥3.5 bits/char
+- Enforce minimum 48 characters for @HKDFId secrets (288 bits) and 22 characters for @Id (128 bits), automatically validated for entropy ≥3.5 bits/char
 - Encourage 50+ chars and high entropy; reject common/weak secrets
 - Add an entropy check in your app (e.g., zxcvbn or Shannon entropy)
 - Note: @Id CIDs are 22 URL‑safe Base64 chars and are not secrets

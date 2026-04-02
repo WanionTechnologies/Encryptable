@@ -25,9 +25,10 @@ import java.security.SecureRandom
         "spring.main.allow-bean-definition-overriding=true",
         // Fixed master secret used by all @Id + @Encrypt tests.
         // Must be stable across the shared Spring context — never randomized here.
-        "encryptable.master.secret=test-master-secret-encryptable-key-32chars"
+        "encryptable.master.secret=encryptable.master.secret.test-master-secret-encryptable-key-12345-74chars"
     ]
 )
+
 abstract class BaseEncryptableTest {
     /** Utility method to generate a random secret string for testing purposes. */
     final fun generateSecret(): String = String.randomSecret()

@@ -187,9 +187,9 @@ Here is a practical example of integrating an Amazon S3 (or S3-compatible) stora
 The storage reference object (the type parameter of `IStorage<ReferenceObj>`) is designed to be a compact, database-stored reference for retrieving the actual binary data and any associated metadata needed for file access.
 
 - **Reference Size:**
-  - Each `IStorage` implementation defines its own reference size by implementing the `referenceLength` property. This makes the framework backend-agnostic — a GridFS implementation may use a 12-byte MongoDB ObjectId, an S3 implementation may use a 16-byte CID, and a custom backend may use any size that fits its addressing scheme.
+  - Each `IStorage` implementation defines its own reference size by implementing the `referenceLength` property. This makes the framework backend-agnostic — a GridFS implementation may use a 12-byte ObjectId, an S3 implementation may use a 16-byte CID, and a custom backend may use a different size that fits its addressing scheme.
   - The reference is stored as a `ByteArray` directly in the entity document, keeping entity documents lightweight.
-  - For `@Sliced` fields, the stored reference is `4 + referenceLength * N` bytes — a 4-byte big-endian `Int` containing the original plaintext length, followed by `N` concatenated slice references. No separate manifest needed.
+  - For `@Sliced` fields, the stored reference is `8 + referenceLength * N` bytes — an 8-byte big-endian `Long` containing the original plaintext length, followed by `N` concatenated slice references. No separate manifest needed.
 - **Purpose:**
   - The reference is used to look up the actual file or binary data in the storage backend.
   - It can also be used to retrieve additional metadata (such as S3 object keys, file paths, or other identifiers) required for accessing or managing the file.
@@ -301,6 +301,85 @@ class UserDocument : Encryptable<UserDocument>() {
 | **Medical imaging (DICOM)** | `4` (4MB) | Large files, enables parallel fetch |
 | **General large files** | `2` (2MB) | Safe default for unknown content |
 
+**MongoDB Document Size Limit:**
+
+When using MongoDB, the total size of a document is limited to 16MB. This means the reference header for a `@Sliced` field (8 bytes + N references) must fit within this limit. The maximum number of slices (N) is:
+
+    maxSlices = floor((16MB - 8) / referenceLength)
+    maxFileSize = maxSlices * sliceSize
+ 
+For example, with a 16-byte reference and 4MB slices:
+
+    maxSlices = floor((16 * 1024 * 1024 - 8) / 16) ≈ 1,048,575
+    maxFileSize ≈ 1,048,575 * 4MB ≈ 4TB
+
+For example, with a 16-byte reference and 32MB slices:
+
+    maxSlices = floor((16 * 1024 * 1024 - 8) / 16) ≈ 1,048,575
+    maxFileSize ≈ 1,048,575 * 32MB ≈ 33.5TB
+
+This allows extremely large files to be referenced, as long as the reference array fits within the 16MB MongoDB document size limit.
+
+**Note:** The calculations above are an intentional oversimplification. In practice, a MongoDB document will always contain additional metadata (such as BSON overhead, other fields), which further reduces the space available for the reference header. As a result, the true maximum file size you can reference will be somewhat lower than the theoretical maximum shown here. If you are approaching the document size limit, you should conservatively estimate the available space for the reference header and test with your actual document structure to ensure you do not exceed MongoDB's 16MB document size limit.
+
+**Recommendation:**
+
+When working with files that could exceed 2GB, always annotate the field with `@Sliced` and process the data in manageable slices. The Java platform imposes a strict 2GB limit on array sizes, so attempting to load or store larger files as a single `ByteArray` will fail with an `OutOfMemoryError` or `NegativeArraySizeException`.
+
+**File larger than 2GB:**
+
+For files larger than 2GB (`Int.MAX_VALUE`), the standard single-blob "backing field" (i.e., a `ByteArray` field) is not an option. You cannot assign or retrieve such files as a single array. Instead, you must:
+- Manually construct the reference header (an 8-byte big-endian Long for the original length, followed by N slice references).
+- Write and read the file in slices, using streams or chunked processing.
+- When reading, parse the 8-byte header to determine the original length and number of slices, then fetch and process each slice sequentially or in parallel.
+
+**Example: Writing a large file in slices**
+```kotlin
+val totalLength: Long = /* file size, e.g. from inputStream.available() or known metadata */
+val sliceSize = 16 * 1024 * 1024 // 16MB
+val sliceCount = (totalLength + sliceSize - 1) / sliceSize
+val header = ByteBuffer.allocate(8).putLong(totalLength).array()
+val reference = ByteArray(8 + sliceCount * storage.referenceLength)
+System.arraycopy(header, 0, reference, 0, 8)
+for (i in 0 until sliceCount) {
+    val slice: ByteArray = /* read next chunk from input stream */
+    val sliceRef = storage.create(slice)
+    System.arraycopy(sliceRef, 0, reference, 8 + i * storage.referenceLength, storage.referenceLength)
+}
+// Store 'reference' as the field value
+```
+
+**Example: Reading a large file in slices**
+```kotlin
+val reference: ByteArray = /* field value from storage */
+val totalLength = ByteBuffer.wrap(reference, 0, 8).long
+val sliceCount = (reference.size - 8) / storage.referenceLength
+for (i in 0 until sliceCount) {
+    val offset = 8 + i * storage.referenceLength
+    val sliceRef = reference.copyOfRange(offset, offset + storage.referenceLength)
+    val slice = storage.read(sliceRef)
+    // Process or stream 'slice' as needed
+}
+```
+
+**Example: Deleting a large file in slices**
+To delete a large file stored in slices, iterate over each slice reference and call the storage backend's delete method:
+```kotlin
+val reference: ByteArray = /* field value from storage */
+val sliceCount = (reference.size - 8) / storage.referenceLength
+for (i in 0 until sliceCount) {
+    val offset = 8 + i * storage.referenceLength
+    val sliceRef = reference.copyOfRange(offset, offset + storage.referenceLength)
+    storage.delete(sliceRef)
+}
+```
+
+> **Note:** In practice, you do not need to manually delete each slice as shown above. Simply setting the field to `null` (e.g., `entity.file = null`) will make Encryptable to automatically delete all associated slices for you. The example above is provided for illustration and for cases where you need to perform deletion outside the normal entity lifecycle.
+
+Using `@Sliced` allows Encryptable to transparently split large files into independently encrypted chunks, enabling you to store, retrieve, and process files of virtually any size—without hitting JVM memory limits. This approach also improves performance for large files by supporting parallel I/O and reducing memory pressure.
+
+**Best practice:** Always use `@Sliced` for any binary field that might grow beyond a few hundred megabytes, or when you need to support streaming, parallel processing, or low-memory environments.
+
 ### How It Works Internally
 
 Each slice is a **fully independent AES-256-GCM ciphertext** — its own IV, its own authentication tag — when the field is also annotated with `@Encrypt`. Without `@Encrypt`, slices are stored as raw bytes. All slices of the same field share the same secret as the entity — since they are parts of the same encrypted field, the same cryptographic isolation applies.
@@ -312,10 +391,10 @@ Each slice is a **fully independent AES-256-GCM ciphertext** — its own IV, its
 referenceBytes = ByteArray(storage.referenceLength)            // single reference → one file
 
 // Sliced:
-referenceBytes = ByteArray(4 + storage.referenceLength * N)   // 4-byte length header + N references
+referenceBytes = ByteArray(8 + storage.referenceLength * N)   // 8-byte length header + N references
 ```
 
-The first 4 bytes store the **original plaintext data length** as a big-endian `Int`. This is not
+The first 8 bytes store the **original plaintext data length** as a big-endian `Long`. This is not
 redundant — the slice count alone does not tell you the total length. All slices are exactly
 `sizeMB` MB of plaintext, except the **last slice**, which can be anywhere from 1 byte to
 `sizeMB` MB. Without the length header, you would have to fetch and decrypt the final slice
@@ -325,15 +404,15 @@ before any other work could begin.
 Storing the length upfront means the total output size is known **before fetching a single slice**,
 which enables two things:
 - Pre-allocating a `ByteArray` of the exact output size, so each decrypted slice can be written
-  directly at its correct offset in parallel — no intermediate buffers, no reassembly step.
+directly at its correct offset in parallel — no intermediate buffers, no reassembly step.
 - Setting response headers (e.g. `Content-Length`) correctly from the very start of a download,
-  before any slice is fetched — which is required for the browser to show accurate download progress.
+before any slice is fetched — which is required for the browser to show accurate download progress.
 
 Each `IStorage` implementation defines its own reference size via the `referenceLength` property — there is no fixed size assumption. A GridFS implementation may use a 12-byte ObjectId reference, an S3 implementation may use a 16-byte CID, another backend may use a different size entirely. The slice count is always derived as:
 
 ```kotlin
-val originalLength = java.nio.ByteBuffer.wrap(referenceBytes, 0, 4).int  // first 4 bytes → plaintext size
-val sliceCount = (referenceBytes.size - 4) / storage.referenceLength
+val originalLength = java.nio.ByteBuffer.wrap(referenceBytes, 0, 8).long  // first 8 bytes → plaintext size
+val sliceCount = (referenceBytes.size - 8) / storage.referenceLength
 ```
 
 **No new fields, no new collections, no new persistence logic.** The existing reference mechanism handles it naturally — the `StorageHandler` detects `@Sliced` on the field and treats the reference as a list of N independent slice references instead of a single one.
@@ -355,7 +434,7 @@ operation is multiplied by the slice count (`fileSize / sliceKB`):
 |-----------|------------|------------|-----------|----------|------------|
 | 16 MB     | 4 MB       | 4          | 4         | 4        | 4          |
 | 64 MB     | 4 MB       | 16         | 16        | 16       | 16         |
-| 256 MB    | 4 MB       | 64         | 64        | 64       | 64         |
+| 256 MB    | 4 MB       | 64         | 64         | 64       | 64         |
 | 1 GB      | 4 MB       | 256        | 256       | 256      | 256        |
 | 2 GB      | 4 MB       | 512        | 512       | 512      | 512        |
 | 2 GB      | 16 MB      | 128        | 128       | 128      | 128        |
@@ -397,9 +476,9 @@ prices (as of early 2026) for a **2 GB file with 4 MB slices (512 ops per read/w
 
 ### Why This Is Correct Cryptographically
 
-This pattern mirrors how the **TLS record layer** works — each TLS record is independently encrypted with its own IV and auth tag, and sequence numbers are part of the authenticated data to prevent reordering. Applying this pattern at the storage layer is architecturally sound, well-understood, and battle-tested at internet scale.
+This pattern mirrors how the **TLS record layer** works, each TLS record is independently encrypted with its own IV and auth tag, and sequence numbers are part of the authenticated data to prevent reordering. Applying this pattern at the storage layer is architecturally sound, well-understood, and battle-tested at internet scale.
 
-**Ordering is guaranteed** by the position of each reference in the concatenated `ByteArray` — slice 0 starts at byte 4 (after the length header), slice 1 at byte `4 + referenceLength`, slice 2 at byte `4 + referenceLength * 2`, and so on. The order is deterministic and requires no separate metadata. Slice count is `(referenceBytes.size - 4) / storage.referenceLength`.
+**Ordering is guaranteed** by the position of each reference in the concatenated `ByteArray` — slice 0 starts at byte 8 (after the length header), slice 1 at byte `8 + referenceLength`, slice 2 at byte `8 + referenceLength * 2`, and so on. The order is deterministic and requires no separate metadata. Slice count is `(referenceBytes.size - 8) / storage.referenceLength`.
 
 ### Real-World Use Cases
 
@@ -426,9 +505,11 @@ This pattern mirrors how the **TLS record layer** works — each TLS record is i
 > How the stored slices or files are fetched, assembled, and delivered to end users — via download
 > endpoints, edge functions, or any other mechanism — is the responsibility of the application.
 
-### Current Status
+**What this means in practice:**
 
-`@Sliced` is available now. It does not change the field-as-live-mirror semantics from the developer's perspective — the `ByteArray` field continues to behave identically to a non-sliced field. Slicing is an implementation detail, fully transparent, configurable per field via `@Sliced(sizeMB = N)`.
+- You can store and retrieve files larger than 2GB using Encryptable, as long as you use the `@Sliced` annotation to process them in chunks.
+- You cannot read or write such files as a single `ByteArray` — this is a limitation of the Java platform, not Encryptable.
+- All storage backends and the slicing mechanism are designed to support arbitrarily large files, but your application code must process them slice-by-slice.
 
 ---
 

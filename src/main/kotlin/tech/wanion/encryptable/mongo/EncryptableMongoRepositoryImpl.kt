@@ -21,14 +21,15 @@ import org.springframework.data.mongodb.repository.support.SimpleMongoRepository
 import org.springframework.data.repository.query.FluentQuery
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.util.Assert
+import tech.wanion.encryptable.CID
+import tech.wanion.encryptable.CID.Companion.binary
+import tech.wanion.encryptable.CID.Companion.cid
 import tech.wanion.encryptable.EncryptableContext
 import tech.wanion.encryptable.config.EncryptableConfig
-import tech.wanion.encryptable.mongo.CID.Companion.binary
-import tech.wanion.encryptable.mongo.CID.Companion.cid
 import tech.wanion.encryptable.util.Limited.parallelForEach
-import tech.wanion.encryptable.util.extensions.readField
 import tech.wanion.encryptable.util.extensions.markForWiping
-import java.lang.reflect.Method
+import tech.wanion.encryptable.util.extensions.readField
+import tech.wanion.encryptable.util.extensions.unreflect
 import java.time.Duration
 import java.time.Instant
 import java.util.*
@@ -56,10 +57,25 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
     private companion object {
         private val logger = LoggerFactory.getLogger(EncryptableMongoRepositoryImpl::class.java)
 
-        /** ID
+        /**
+         * # MONGO_ID_FIELD
          * The MongoDB field name for the entity ID.
          */
         private const val MONGO_ID_FIELD: String = "_id"
+
+        /**
+         * # validCidLengths
+         *
+         * List of valid CID string lengths accepted by the repository.
+         *
+         * This set is used to determine whether a given string can be interpreted as a CID (Content Identifier)
+         * in various lookup and conversion operations. It typically includes lengths for Base64 URL-safe (22),
+         * standard Base64 (24), hexadecimal UUID (32), and canonical UUID with dashes (36).
+         *
+         * Used in methods that resolve secrets or IDs to CIDs, ensuring robust parsing and compatibility
+         * with multiple CID representations.
+         */
+        private val validCidLengths = listOf(22, 24, 32, 36)
 
         /**
          * **prepareMethod**
@@ -70,9 +86,9 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - The method signature includes only a Continuation parameter, as required for Kotlin suspend functions.
          * - This `Method` is cached for performance and should not be used outside repository internals.
          */
-        val prepareMethod: Method = Encryptable::class.java.getDeclaredMethod(
+        val prepareMethod = Encryptable::class.java.getDeclaredMethod(
             "prepare"
-        ).apply { isAccessible = true }
+        ).unreflect()
 
         /**
          * **restoreMethod**
@@ -83,24 +99,24 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - The method signature includes a `String` (secret) and a Continuation parameter, as required for Kotlin suspend functions.
          * - This `Method` is cached for performance and should not be used outside repository internals.
          */
-        val restoreMethod: Method = Encryptable::class.java.getDeclaredMethod(
+        val restoreMethod = Encryptable::class.java.getDeclaredMethod(
             "restore",
             String::class.java
-        ).apply { isAccessible = true }
+        ).unreflect()
 
         /**
-         * **integrityCheckAndCleanUpMethod**
+         * **integrityCheck**
          *
-         * Reflection handle for the private `integrityCheckAndCleanUp()` method in `Encryptable`.
+         * Reflection handle for the private `integrityCheck()` method in `Encryptable`.
          *
          * - Provides reflective access to the integrity check and cleanup logic for Encryptable entities.
          * - When invoked, it checks for broken references and cleans them up to maintain data integrity.
          * - Used internally by repository logic to trigger integrity checks via reflection.
          * - Should not be used outside repository internals.
          */
-        val integrityCheckAndCleanUpMethod: Method = Encryptable::class.java.getDeclaredMethod(
-            "integrityCheckAndCleanUp",
-        ).apply { isAccessible = true }
+        val integrityCheckMethod = Encryptable::class.java.getDeclaredMethod(
+            "integrityCheck",
+        ).unreflect()
 
         /**
          * **updateMethod**
@@ -111,12 +127,12 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - The method signature includes a `String` (secret) and a Continuation parameter, as required for Kotlin suspend functions.
          * - This `Method` is cached for performance and should not be used outside repository internals.
          */
-        val updateMethod: Method = Encryptable::class.java.getDeclaredMethod(
+        val updateMethod = Encryptable::class.java.getDeclaredMethod(
             "update"
-        ).apply { isAccessible = true }
+        ).unreflect()
 
         /**
-         * **prepareForRotationMethod**
+         * **beforeRotationMethod**
          *
          * Reflection handle for the private `prepareForRotation()` method in `Encryptable`.
          *
@@ -126,9 +142,9 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - Used internally by repository logic to trigger secret rotation via reflection.
          * - Should not be used outside repository internals.
          */
-        val beforeRotationMethod: Method = Encryptable::class.java.getDeclaredMethod(
+        val beforeRotationMethod = Encryptable::class.java.getDeclaredMethod(
             "beforeRotation"
-        ).apply { isAccessible = true }
+        ).unreflect()
 
         /**
          * **cascadeDeleteMethod**
@@ -142,9 +158,9 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
          * - Used internally by repository logic to trigger cascade deletion via reflection.
          * - Should not be used outside repository internals.
          */
-        val cascadeDeleteMethod: Method = Encryptable::class.java.getDeclaredMethod(
+        val cascadeDeleteMethod = Encryptable::class.java.getDeclaredMethod(
             "cascadeDelete"
-        ).apply { isAccessible = true }
+        ).unreflect()
     }
     /**
      * The entity information and type class for the repository.
@@ -752,7 +768,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      */
     private fun resolveCid(secret: String, secretAsId: Boolean): CID {
         // If secretAsId is true, first we try to interpret the secret directly as a CID.
-        if (secretAsId && secret.length == 22) {
+        if (secretAsId && secret.length in validCidLengths) {
             try {
                 val id = secret.cid
                 return id
@@ -775,7 +791,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      */
     private fun integrityCheck(entity: T) {
         // Check and clean up any broken references.
-        val missingCidsByType = integrityCheckAndCleanUpMethod.invoke(entity) as Map<Class<out Encryptable<*>>, Set<String>>
+        val missingCidsByType = integrityCheckMethod.invoke(entity) as Map<Class<out Encryptable<*>>, Set<String>>
         // Log any missing references found during integrity check
         missingCidsByType.forEach { (type, missingCids) ->
             logger.warn(" - Missing references of type ${type.simpleName}: $missingCids")
@@ -799,6 +815,24 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         val id = entity.id ?: throw IllegalArgumentException("Entity must have a CID set to add secret info.")
         entityInfoMap[id] = EntityInfo(entity, entity.hashCodes())
     }
+
+    /**
+     * # hasEntityInfo
+     *
+     * Checks if the repository is currently tracking metadata for the given entity.
+     *
+     * Tracking information includes field hashes, version info, and other per-request
+     * metadata used for change detection, lazy loading, and cleanup. This method is
+     * typically used to determine if the entity is being managed within the current
+     * request context or if it is a new/untracked instance.
+     *
+     * ### Parameters
+     * - `entity` The Encryptable entity to check for tracking information.
+     *
+     *  ### Returns
+     *  - true if tracking information exists for the entity, false otherwise.
+     */
+    override fun hasEntityInfo(entity: Encryptable<T>): Boolean = entity.id != null && getEntityInfoMap().contains(entity.id)
 
     /**
      * # updateEntityInfo
@@ -1354,3 +1388,4 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      */
     override fun deleteAll(entities: Iterable<T>) = throw NotImplementedError("deleteAll(entities: Iterable<T>) is intentionally not implemented.")
 }
+

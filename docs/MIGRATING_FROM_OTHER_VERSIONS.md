@@ -4,7 +4,7 @@ This guide helps you upgrade between different versions of Encryptable.
 
 ---
 
-## Current Version: 1.1.0
+## Current Version: 1.2.0
 
 ---
 
@@ -106,6 +106,63 @@ is no automated or manual migration that can convert existing data to the new sc
 3. **Storage threshold minimum lowered to 1KB** — The default remains 16KB. Applications using
    S3-compatible backends can now explicitly set `encryptable.storage.threshold=1024` to route
    binary fields to external storage from 1KB. No action required if using the default.
+
+---
+
+### ✅ Migrating to 1.2.0 from 1.1.0
+
+**Release date:** 2026-03-28  
+**Migration required:** Yes — if you have existing data with `@Sliced` fields created before 1.2.0
+
+#### What changed
+
+- **@Sliced Reference Header Format:** The internal reference header for `@Sliced` `ByteArray` fields now uses an 8-byte `Long` size prefix (was 4-byte `Int`). This enables support for extremely large files and aligns with other storage conventions. See the [Changelog](../CHANGELOG.md#111---2026-03-28) for details.
+- **Spring Boot Update:** Upgraded from 4.0.3 to 4.0.5. No breaking changes expected, but review Spring Boot's release notes if you have custom integrations.
+
+#### Who needs the migration
+
+- Anyone with existing data using `@Sliced` fields created with Encryptable 1.1.0 or earlier. New data will always use the new format.
+
+#### Step-by-step migration
+
+**Step 1 — Back up your database**
+```bash
+mongodump --out ./backup-before-1.2.0
+```
+
+**Step 2 — Update the dependency**
+```kotlin
+// build.gradle.kts
+implementation("tech.wanion:encryptable-starter:1.2.0")
+```
+
+**Step 3 — Enable migration mode and start the application once**
+```properties
+encryptable.migration=true
+```
+Start your application and **wait for the migration to complete**. Watch the logs for:
+```
+Migration 1.1.0 → 1.2.0 completed.
+```
+
+> ⚠️ **Do not stop or restart the application while migration is in progress.**
+> If interrupted, restore from the backup in Step 1 and start over.
+
+**Step 4 — Disable migration mode**
+```properties
+encryptable.migration=false
+```
+
+**Step 5 — Verify**  
+Load a few entities with `@Sliced` fields and confirm they are accessible and correct.
+
+#### Impact if not migrated
+
+- Applications reading `@Sliced` fields from databases created with Encryptable 1.1.0 or earlier **must** run the migration before upgrading to 1.2.0. Failure to migrate will result in deserialization errors or incorrect file sizes for affected fields.
+
+#### Reference
+- See the [Changelog](../CHANGELOG.md#111---2026-03-28) for a summary of changes.
+- See the [migration utility documentation](link-to-migration-utility) for advanced usage.
 
 ---
 

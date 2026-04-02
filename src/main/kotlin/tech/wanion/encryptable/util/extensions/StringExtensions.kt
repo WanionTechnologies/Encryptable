@@ -29,11 +29,11 @@ private val secureRandom = SecureRandom()
  *
  * Base64 is used as it can represent bytearrays in a more compact way than hexadecimal characters, but, Base64 is NOT enforced, any character can be used as a secret.
  *
- * @param byteLength The length in bytes of the random data to generate. Default is 32 bytes.
+ * @param byteLength The length in bytes of the random data to generate. Default is 36 bytes (48 Base64 URL-safe characters = 288 bits).
  * @return A URL-safe Base64 encoded string representing the random secret.
  * @throws IllegalArgumentException if byteLength is not positive.
  */
-fun String.Companion.randomSecret(byteLength: Int = 32): String {
+fun String.Companion.randomSecret(byteLength: Int = 36): String {
     require(byteLength > 0) { "byteLength must be positive (got: $byteLength)" }
     val bytes = ByteArray(byteLength)
     secureRandom.nextBytes(bytes)

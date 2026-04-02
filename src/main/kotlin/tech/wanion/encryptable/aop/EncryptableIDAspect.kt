@@ -4,6 +4,7 @@ import org.aspectj.lang.JoinPoint
 import org.aspectj.lang.annotation.Aspect
 import org.aspectj.lang.annotation.Before
 import org.aspectj.lang.annotation.Pointcut
+import tech.wanion.encryptable.mongo.Encryptable
 
 /**
  * # EncryptableIDAspect
@@ -21,7 +22,7 @@ import org.aspectj.lang.annotation.Pointcut
 @Aspect
 class EncryptableIDAspect {
     companion object {
-        const val ENCRYPTABLE_CLASS = "tech.wanion.encryptable.mongo.Encryptable"
+        private val ENCRYPTABLE_CLASS = Encryptable::class.java.name
     }
 
     /**
@@ -29,7 +30,7 @@ class EncryptableIDAspect {
      * Since id is abstract in Encryptable, the actual field exists in subclasses.
      * We intercept any set to CID fields named 'id' in any Encryptable subclass.
      */
-    @Pointcut("execution(void tech.wanion.encryptable.mongo.Encryptable+.setId(tech.wanion.encryptable.mongo.CID))")
+    @Pointcut("execution(void tech.wanion.encryptable.mongo.Encryptable+.setId(tech.wanion.encryptable.CID))")
     fun encryptableIdSet() {}
 
     /**

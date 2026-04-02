@@ -1,6 +1,6 @@
 # Encryptable: Compliance Analysis – Alignment with Major Privacy Standards
 
-> **Note:** Encryptable is not a strict zero-knowledge system. For a full explanation and apology, see [Not Zero-Knowledge](NOT_ZERO_KNOWLEDGE.md).
+> **Note:** Encryptable is not a strict zero-knowledge system. For a full explanation and apology, see [Not Exactly Zero-Knowledge](NOT_EXACTLY_ZERO_KNOWLEDGE.md).
 
 ## 🏆 Executive Summary
 

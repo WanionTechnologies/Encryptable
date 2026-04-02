@@ -3,7 +3,7 @@ package cards.project.mongo.entity
 import cards.project.storage.MemoryStorage
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.stereotype.Repository
-import tech.wanion.encryptable.mongo.CID
+import tech.wanion.encryptable.CID
 import tech.wanion.encryptable.mongo.Encrypt
 import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.mongo.EncryptableMongoRepository

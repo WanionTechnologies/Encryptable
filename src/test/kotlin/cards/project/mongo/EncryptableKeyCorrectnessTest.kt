@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import tech.wanion.encryptable.MasterSecretHolder
-import tech.wanion.encryptable.mongo.CID
+import tech.wanion.encryptable.CID
 import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.AES256
 import tech.wanion.encryptable.util.extensions.decode64

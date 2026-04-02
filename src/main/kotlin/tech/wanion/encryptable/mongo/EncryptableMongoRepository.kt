@@ -5,6 +5,7 @@ import org.bson.Document
 import org.springframework.data.mongodb.core.MongoOperations
 import org.springframework.data.mongodb.repository.MongoRepository
 import org.springframework.data.repository.NoRepositoryBean
+import tech.wanion.encryptable.CID
 import java.util.*
 
 /**
@@ -20,6 +21,8 @@ import java.util.*
 @NoRepositoryBean
 interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID> {
     /**
+     * # getTypeClass
+     *
      * Gets the class type of the entity managed by the repository.
      *
      * ### Returns
@@ -28,6 +31,8 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
     fun getTypeClass(): Class<T>
 
     /**
+     * # getMongoOperations
+     *
      * Gets the `MongoOperations` instance for direct database access.
      *
      * ### Returns
@@ -36,12 +41,157 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
     fun getMongoOperations(): MongoOperations
 
     /**
+     * # getMongoCollection
+     *
      * Gets the `MongoCollection<Document>` for this repository.
      *
      * ### Returns
      * - The `MongoCollection<Document>` instance.
      */
     fun getMongoCollection(): MongoCollection<Document>
+
+    /**
+     * # rotateSecret
+     *
+     * Rotates secrets for entity matching the old secret to the new secret.
+     *
+     * ### Parameters
+     * - `oldSecret`: The current secret string.
+     * - `newSecret`: The new secret string to rotate to.
+     */
+    fun rotateSecret(oldSecret: String, newSecret: String)
+
+    /**
+     * # saveWithSecret
+     *
+     * Saves an entity with the provided secret string.
+     *
+     * This method sets the secret on the entity before saving it to the database.
+     *
+     * ### Parameters
+     * - `entity`: The entity to save.
+     * - `secret`: The secret string to associate with the entity.
+     *
+     * ### Returns
+     * - The saved entity instance.
+     */
+    fun saveWithSecret(entity: T, secret: String): T = save(entity.withSecret(secret))
+
+    /**
+     * # existsBySecret
+     *
+     * Checks if an entity exists by its secret string.
+     *
+     * ### Parameters
+     * - `secret`: The secret string.
+     *
+     * ### Returns
+     * - `true` if the entity exists, `false` otherwise.
+     */
+    fun existsBySecret(secret: String): Boolean
+
+    /**
+     * # filterExistingSecrets
+     *
+     * Filters the given secrets to return only those that exist in the repository.
+     *
+     * ### Parameters
+     * - `secrets`: Iterable of secret strings to filter.
+     *
+     * ### Returns
+     * - List of secrets that exist in the repository (`List<String>`).
+     *
+     * ### Usage Notes
+     * - If the returned list has the same length as the input, all secrets exist.
+     * - If the returned list is empty, none of the secrets exist.
+     * - Otherwise, only some of the secrets exist (partial match).
+     */
+    fun filterExistingSecrets(secrets: Iterable<String>): List<String>
+
+    /**
+     * # filterNonExistingSecrets
+     *
+     * Filters the given secrets to return only those that do NOT exist in the repository.
+     *
+     * ### Parameters
+     * - `secrets`: Iterable of secret strings to filter.
+     *
+     * ### Returns
+     * - Set of secrets that do not exist in the repository (`Set<String>`).
+     *
+     * ### Usage Notes
+     * - If the returned set has the same size as the input, none of the secrets exist.
+     * - If the returned set is empty, all secrets exist.
+     * - Otherwise, only some of the secrets are missing (partial match).
+     */
+    fun filterNonExistingSecrets(secrets: Iterable<String>): Set<String>
+
+    /**
+     * # findBySecret
+     *
+     * Finds an entity by its secret string.
+     *
+     * ### Parameters
+     * - `secret`: The secret string.
+     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
+     * - `touchIt`: If true, updates the entity's tracking information to reflect that it has been accessed.
+     *
+     * ### Returns
+     * - `Optional<T>` containing the entity if found.
+     */
+    fun findBySecret(secret: String, secretAsId: Boolean = false, touchIt: Boolean = true): Optional<T>
+
+    /**
+     * # findBySecretOrNull
+     *
+     * Finds an entity by its secret string, or returns `null` if not found.
+     *
+     * ### Parameters
+     * - `secret`: The secret string.
+     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
+     * - `touchIt`: If true, updates the entity's tracking information to reflect that it has been accessed.
+     *
+     * ### Returns
+     * - The entity if found, or `null`.
+     */
+    fun findBySecretOrNull(secret: String, secretAsId: Boolean = false, touchIt: Boolean = true): T? = findBySecret(secret, secretAsId).orElse(null)
+
+    /**
+     * # findBySecrets
+     *
+     * Finds all entities matching the given list of secret strings.
+     *
+     * ### Parameters
+     * - `secrets`: Iterable of secret strings.
+     * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
+     * - `touchThem`: If true, updates the entities' tracking information to reflect that they have been accessed.
+     *
+     * ### Returns
+     * - List of matching entities (`List<T>`).
+     */
+    fun findBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false, touchThem: Boolean = true): List<T>
+
+    /**
+     * # deleteBySecret
+     *
+     * Deletes an entity by its secret string.
+     *
+     * ### Parameters
+     * - `secret`: The secret string.
+     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
+     */
+    fun deleteBySecret(secret: String, secretAsId: Boolean = false)
+
+    /**
+     * # deleteBySecrets
+     *
+     * Deletes all entities matching the given list of secret strings.
+     *
+     * ### Parameters
+     * - `secrets`: Iterable of secret strings.
+     * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
+     */
+    fun deleteBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false)
 
     /**
      * # markForCleanup
@@ -67,129 +217,26 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
     fun markForCleanup(entity: T)
 
     /**
-     * Rotates secrets for entity matching the old secret to the new secret.
+     * # hasEntityInfo
+     *
+     * Checks if the repository is currently tracking metadata for the given entity.
+     *
+     * Tracking information includes field hashes, version info, and other per-request
+     * metadata used for change detection, lazy loading, and cleanup. This method is
+     * typically used to determine if the entity is being managed within the current
+     * request context or if it is a new/untracked instance.
      *
      * ### Parameters
-     * - `oldSecret`: The current secret string.
-     * - `newSecret`: The new secret string to rotate to.
-     */
-    fun rotateSecret(oldSecret: String, newSecret: String)
-
-    /**
-     * Saves an entity with the provided secret string.
-     *
-     * This method sets the secret on the entity before saving it to the database.
-     *
-     * ### Parameters
-     * - `entity`: The entity to save.
-     * - `secret`: The secret string to associate with the entity.
+     * - `entity` The Encryptable entity to check for tracking information.
      *
      * ### Returns
-     * - The saved entity instance.
+     * - true if tracking information exists for the entity, false otherwise.
      */
-    fun saveWithSecret(entity: T, secret: String): T = save(entity.withSecret(secret))
+    fun hasEntityInfo(entity: Encryptable<T>): Boolean
 
     /**
-     * Checks if an entity exists by its secret string.
+     * # updateEntityInfo
      *
-     * ### Parameters
-     * - `secret`: The secret string.
-     *
-     * ### Returns
-     * - `true` if the entity exists, `false` otherwise.
-     */
-    fun existsBySecret(secret: String): Boolean
-
-    /**
-     * Filters the given secrets to return only those that exist in the repository.
-     *
-     * ### Parameters
-     * - `secrets`: Iterable of secret strings to filter.
-     *
-     * ### Returns
-     * - List of secrets that exist in the repository (`List<String>`).
-     *
-     * ### Usage Notes
-     * - If the returned list has the same length as the input, all secrets exist.
-     * - If the returned list is empty, none of the secrets exist.
-     * - Otherwise, only some of the secrets exist (partial match).
-     */
-    fun filterExistingSecrets(secrets: Iterable<String>): List<String>
-
-    /**
-     * Filters the given secrets to return only those that do NOT exist in the repository.
-     *
-     * ### Parameters
-     * - `secrets`: Iterable of secret strings to filter.
-     *
-     * ### Returns
-     * - Set of secrets that do not exist in the repository (`Set<String>`).
-     *
-     * ### Usage Notes
-     * - If the returned set has the same size as the input, none of the secrets exist.
-     * - If the returned set is empty, all secrets exist.
-     * - Otherwise, only some of the secrets are missing (partial match).
-     */
-    fun filterNonExistingSecrets(secrets: Iterable<String>): Set<String>
-
-    /**
-     * Finds an entity by its secret string.
-     *
-     * ### Parameters
-     * - `secret`: The secret string.
-     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
-     * - `touchIt`: If true, updates the entity's tracking information to reflect that it has been accessed.
-     *
-     * ### Returns
-     * - `Optional<T>` containing the entity if found.
-     */
-    fun findBySecret(secret: String, secretAsId: Boolean = false, touchIt: Boolean = true): Optional<T>
-
-    /**
-     * Finds an entity by its secret string, or returns `null` if not found.
-     *
-     * ### Parameters
-     * - `secret`: The secret string.
-     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
-     * - `touchIt`: If true, updates the entity's tracking information to reflect that it has been accessed.
-     *
-     * ### Returns
-     * - The entity if found, or `null`.
-     */
-    fun findBySecretOrNull(secret: String, secretAsId: Boolean = false, touchIt: Boolean = true): T? = findBySecret(secret, secretAsId).orElse(null)
-
-    /**
-     * Finds all entities matching the given list of secret strings.
-     *
-     * ### Parameters
-     * - `secrets`: Iterable of secret strings.
-     * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
-     * - `touchThem`: If true, updates the entities' tracking information to reflect that they have been accessed.
-     *
-     * ### Returns
-     * - List of matching entities (`List<T>`).
-     */
-    fun findBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false, touchThem: Boolean = true): List<T>
-
-    /**
-     * Deletes an entity by its secret string.
-     *
-     * ### Parameters
-     * - `secret`: The secret string.
-     * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
-     */
-    fun deleteBySecret(secret: String, secretAsId: Boolean = false)
-
-    /**
-     * Deletes all entities matching the given list of secret strings.
-     *
-     * ### Parameters
-     * - `secrets`: Iterable of secret strings.
-     * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
-     */
-    fun deleteBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false)
-
-    /**
      * Updates the metadata for a given entity.
      *
      * This method should be called whenever a byte-array was lazy loaded.
@@ -202,6 +249,8 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
     fun updateEntityInfo(entity: Encryptable<T>, newFieldHash: Pair<String, Int>)
 
     /**
+     * # removeEntityInfo
+     *
      * Removes the tracking information for a given entity by its CID.
      *
      * This is typically called when an entity is deleted or no longer needs to be tracked.
@@ -212,6 +261,8 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
     fun removeEntityInfo(cid: CID)
 
     /**
+     * # clearThreadLocal
+     *
      * Clears thread-local storage, removing any tracked new entities and other per-request data.
      *
      * Should be called at the end of a request or operation context to prevent memory leaks.

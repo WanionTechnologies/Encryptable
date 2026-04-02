@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import tech.wanion.encryptable.MasterSecretHolder
-import tech.wanion.encryptable.mongo.CID
+import tech.wanion.encryptable.CID
 import tech.wanion.encryptable.storage.SlicedResult
 import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.AES256
@@ -48,7 +48,7 @@ import tech.wanion.encryptable.util.extensions.metadata
  *
  * ### Multi-slice boundary
  * Use a payload whose size is not a clean multiple of the slice size, so the last slice is
- * shorter than `sizeMB` MB. This verifies that the 4-byte length header is correctly used
+ * shorter than `sizeMB` MB. This verifies that the 8-byte length header is correctly used
  * to trim the last slice on reassembly instead of returning zero-padded garbage.
  *
  * ### Key correctness (bypasses the framework decrypt path)
@@ -125,8 +125,8 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
 
         slicedResult as SlicedResult
 
-        assertEquals(1, slicedResult.references.size, "Payload smaller than sliceSizeBytes must produce exactly 1 slice")
-        assertEquals(original.size, slicedResult.originalLength, "originalLength in the reference header must equal the original payload size")
+        assertEquals(1, slicedResult.slices.size, "Payload smaller than sliceSizeBytes must produce exactly 1 slice")
+        assertEquals(original.size, slicedResult.originalLength.toInt(), "originalLength in the reference header must equal the original payload size")
 
         val slicedField = storageHandler.getField(TestSlicedEntity::class.java, "slicedContent")
         assertNotNull(slicedField, "Field must be available for slicedContent")
@@ -134,7 +134,7 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
         val storage = storageHandler.getStorageForField(slicedField)
         assertNotNull(storage, "Storage must be available for slicedContent field")
 
-        val reference = storage.createReference(slicedResult.references[0])
+        val reference = storage.createReference(slicedResult.slices[0])
         assertNotNull(reference, "Reference for the single slice must be valid")
 
         val sliceBytes = storage.read(slicedField.metadata, reference as Any)
@@ -227,11 +227,11 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
         val storage = storageHandler.getStorageForField(TestSlicedEntity::class.java, "slicedContent")
         val field = storageHandler.getField(TestSlicedEntity::class.java, "slicedContent")
 
-        assertEquals(3, slicedResult!!.references.size, "6 MB payload with 2 MB slices must produce exactly 3 slices")
+        assertEquals(3, slicedResult!!.slices.size, "6 MB payload with 2 MB slices must produce exactly 3 slices")
 
         val masterSecret = MasterSecretHolder.getMasterSecret()
 
-        slicedResult.references.forEachIndexed { i, refBytes ->
+        slicedResult.slices.forEachIndexed { i, refBytes ->
             val reference = storage.createReference(refBytes)
             assertNotNull(reference, "Reference for slice $i must be valid")
 
@@ -288,9 +288,9 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
         val field = storageHandler.getField(TestSlicedIdEntity::class.java, "slicedContent")
         val masterSecret = MasterSecretHolder.getMasterSecret()
 
-        assertEquals(2, slicedResult!!.references.size, "4 MB payload with 2 MB slices must produce exactly 2 slices")
+        assertEquals(2, slicedResult!!.slices.size, "4 MB payload with 2 MB slices must produce exactly 2 slices")
 
-        slicedResult.references.forEachIndexed { i, refBytes ->
+        slicedResult.slices.forEachIndexed { i, refBytes ->
             val reference = storage.createReference(refBytes)
             assertNotNull(reference)
 
@@ -348,7 +348,7 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
         val storage = storageHandler.getStorageForField(TestSlicedEntity::class.java, "slicedPublicContent")
         val field = storageHandler.getField(TestSlicedEntity::class.java, "slicedPublicContent")
 
-        slicedResult!!.references.forEachIndexed { i, refBytes ->
+        slicedResult!!.slices.forEachIndexed { i, refBytes ->
             val reference = storage.createReference(refBytes)!!
             val storedBytes = storage.read(field.metadata, reference)!!
 
@@ -388,7 +388,7 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
         val storage = storageHandler.getStorageForField(TestSlicedEntity::class.java, "slicedContent")
         val field = storageHandler.getField(TestSlicedEntity::class.java, "slicedContent")
 
-        val oldReferences = oldSlicedResult!!.references.map { refBytes ->
+        val oldReferences = oldSlicedResult!!.slices.map { refBytes ->
             storage.createReference(refBytes)!!
         }
 
@@ -436,7 +436,7 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
         val storage = storageHandler.getStorageForField(TestSlicedEntity::class.java, "slicedContent")
         val field = storageHandler.getField(TestSlicedEntity::class.java, "slicedContent")
 
-        val references = slicedResult!!.references.map { refBytes ->
+        val references = slicedResult!!.slices.map { refBytes ->
             storage.createReference(refBytes)!!
         }
 
@@ -476,14 +476,10 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
         assertNotNull(slicedResult)
 
         // originalLength must exactly match the payload size
-        assertEquals(
-            original.size,
-            slicedResult!!.originalLength,
-            "originalLength in the reference header must equal the original plaintext size"
-        )
+        assertEquals(original.size.toLong(), slicedResult!!.originalLength, "originalLength in the reference header must equal the original payload size")
 
         // 5 MB / 2 MB = ceiling(2.5) = 3 slices
-        assertEquals(3, slicedResult.references.size, "5 MB with 2 MB slices must produce 3 slices")
+        assertEquals(3, slicedResult.slices.size, "5 MB with 2 MB slices must produce 3 slices")
 
         slicedRepository.deleteBySecret(secret)
     }
@@ -507,7 +503,7 @@ class EncryptableSlicedStorageTest : BaseEncryptableTest() {
         assertNotNull(slicedResult)
         val storage = storageHandler.getStorageForField(TestSlicedEntity::class.java, "slicedContent")
         val field = storageHandler.getField(TestSlicedEntity::class.java, "slicedContent")
-        val references = slicedResult!!.references.map { storage.createReference(it)!! }
+        val references = slicedResult!!.slices.map { storage.createReference(it)!! }
 
         // When — reload, clear the field, flush, then reload again to confirm persistence.
         val loaded = slicedRepository.findBySecretOrNull(secret)!!

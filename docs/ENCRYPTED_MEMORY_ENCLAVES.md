@@ -19,7 +19,7 @@ Hardware-enforced secure execution environments where CPU encrypts all memory, p
 | Technology | Type | Availability | Overhead |
 |-----------|------|-------------|----------|
 | **Intel TDX** | VM-level | Xeon 4th Gen+ (2023+) | 2-5% |
-| **AMD SEV-SNP** | VM-level | EPYC 3rd Gen+ (2021+) | 2-6% |
+| **AMD SEV-SNP** | VM-level | EPYC 3rd Gen+ (2021+), Azure, GCP, OCI | 2-6% |
 | **Intel SGX** | Process-level | Xeon only | 20-50% |
 | **AWS Nitro** | Process-level | EC2 instances | 5-15% |
 
@@ -27,9 +27,42 @@ Hardware-enforced secure execution environments where CPU encrypts all memory, p
 
 ---
 
+## 🚀 Why Encryptable Benefits from Enclaves
+
+Encryptable is designed to provide request-scoped (transient) knowledge, ensuring that secrets and decrypted data exist in memory only for the duration of a request and are securely wiped afterward. However, even with these protections, secrets are still present in server memory during active requests. This creates a potential attack surface if an attacker gains access to the host OS, hypervisor, or physical hardware.
+
+Deploying Encryptable inside a hardware-backed memory enclave provides several key benefits:
+
+- **Memory Safety:** Enclaves ensure that secrets and decrypted data in memory are protected from the host OS, hypervisor, and physical attacks, even during active requests.
+- **Defense-in-Depth:** Enclaves add a strong additional layer of security on top of Encryptable's software protections, reducing the risk of memory scraping, cold boot, or DMA attacks.
+- **Insider Threat Mitigation:** Even privileged cloud or infrastructure administrators cannot access enclave-protected memory, reducing the risk of insider attacks.
+- **Compliance Enablement:** Many regulatory frameworks require memory encryption for sensitive workloads; enclaves help meet these requirements.
+- **No Code Changes Needed:** Encryptable runs unmodified inside enclave-backed VMs, making it easy to adopt this advanced protection.
+
+**Summary:**
+While Encryptable already minimizes the exposure of secrets in memory, running inside an enclave ensures that even the most advanced memory attacks are mitigated, providing the highest practical level of security for sensitive applications.
+
+---
+
 ## 🚀 Quick Start
 
-### Option 1: Azure Confidential VM (AMD SEV-SNP) - Easiest
+### Option 1: Oracle Cloud Infrastructure (OCI) AMD SEV-SNP
+
+```bash
+# Launch a Confidential VM with AMD SEV-SNP on OCI
+# (Use the OCI Console or CLI to provision a VM.Standard.E4.Flex or similar shape with Confidential Computing enabled)
+# Example (CLI):
+ooci compute instance launch \
+  --shape VM.Standard.E4.Flex \
+  --image-id <your-image-ocid> \
+  --metadata '{"user_data":"<base64-cloud-init>"}' \
+  --is-confidential-compute-enabled true
+
+# Inside VM: Run Encryptable normally
+java -jar encryptable-app.jar
+```
+
+### Option 2: Azure Confidential VM (AMD SEV-SNP) - Easiest
 
 ```bash
 # Create SEV-SNP protected VM
@@ -99,58 +132,31 @@ java -jar encryptable-app.jar
 
 ## 🎯 Should You Use Enclaves?
 
-### Overall Verdict: ❌ Not Recommended for Most Users
+### Overall Verdict: 🏰 Recommended for All Encryptable Deployments
 
-Enclaves add complexity and cost for marginal security gain when proper mitigations are in place.
+Running Encryptable inside a hardware-backed memory enclave is recommended for all applications, as it provides strong protection against memory disclosure, insider threats, and advanced attacks—even in cloud environments. While enclaves add some complexity and cost, they offer the highest practical level of security for request-scoped knowledge systems.
 
-### ✅ Use Enclaves If You Meet ALL These:
+### ✅ Why Use Enclaves:
 
-1. **Handle extremely sensitive data** - Government secrets, classified medical records
-2. **Don't trust cloud provider** - Need defense against insider threats
-3. **Compliance mandates** - Regulations require memory encryption
-4. **Can afford 150-200% higher costs** - Or have server-grade hardware
-5. **Accept 2-6% overhead** - For VM-level enclaves
+1. **Protects against memory disclosure** – Even if the OS or hypervisor is compromised, secrets remain protected.
+2. **Mitigates insider and cloud provider threats** – Enclaves isolate application memory from infrastructure administrators.
+3. **Meets compliance and regulatory requirements** – Many industries require memory encryption for sensitive workloads.
+4. **No code changes required** – Encryptable runs unmodified inside enclave-backed VMs.
+5. **Supported on major clouds** – OCI, Azure, and GCP all offer AMD SEV-SNP confidential VMs.
 
-**Choose:** Intel TDX or AMD SEV-SNP (both equivalent for Encryptable)
+### ❗ Considerations:
 
-### ❌ Don't Use Enclaves If:
+- **Cost** – Enclave-backed VMs are more expensive than standard VMs.
+- **Hardware requirements** – Requires server-grade CPUs (EPYC/Xeon) or supported cloud instances.
+- **Operational complexity** – Provisioning and managing enclaves may require additional setup.
 
-1. **Budget constraints** - Better to invest in professional audit ($4k-6k)
-2. **Trust your infrastructure** - Encrypted disk + physical security suffices
-3. **Consumer hardware** - Requires server CPUs (EPYC/Xeon)
-4. **Complexity isn't justified** - 95% of users don't need this
+### 💡 Alternatives (if enclave deployment is not feasible):
 
-### 💡 Better Alternatives for Most Users
+- Invest in a professional security audit ($4k-6k one-time)
+- Use encrypted disk/swap, high-entropy secrets, and memory locking
+- Apply all standard security best practices (see [Best Practices](BEST_PRACTICES.md))
 
-**Priority 1: Professional Security Audit** ($4k-6k one-time)
-- Validates cryptographic implementation
-- Unlocks regulated industries
-- Broader value than enclaves alone
-
-**Priority 2: Standard Security Practices** (Free to low cost)
-- ✅ Encrypted disk/swap (BitLocker, FileVault, cryptsetup)
-- ✅ High-entropy secrets (50+ chars) - Prevents offline attacks if secrets leak
-- ✅ Memory locking (`mlock()`) - Prevents paging to swap
-- ✅ Secure boot + TPM
-- ✅ Rate limiting + DDoS protection
-- ✅ TLS/HTTPS everywhere
-
-**Result:** 99% equivalent protection with 0% overhead and $0 extra cost.
-
-**Note:** High-entropy secrets don't prevent immediate access if memory is dumped (attacker gets the plaintext secret in one attempt), but they do prevent offline brute-force attacks on leaked encrypted data or password hashes.
-
----
-
-## 🔍 Why Enclaves Aren't Critical for Encryptable
-
-**The JVM memory limitation that enclaves solve is NOT a critical vulnerability when:**
-
-1. **High-entropy secrets used** (50+ chars) - If memory is leaked, attacker gets immediate access (one attempt); brute-force is irrelevant. High entropy prevents offline attacks on leaked hashes/ciphertexts
-2. **Encrypted swap/disk** - Secrets never persist unencrypted to storage
-3. **Physical security** - Trusted data centers prevent physical memory attacks
-4. **Infrastructure controls** - Network isolation, access controls, monitoring
-
-**Bottom line:** For 99% of Encryptable deployments, standard best practices provide equivalent protection at zero additional cost and complexity.
+**Result:** Enclaves provide the highest level of protection, but strong security is still possible with best practices if enclaves are not an option.
 
 ---
 
@@ -165,8 +171,8 @@ Both provide VM-level memory encryption with similar characteristics:
 | **Overhead** | 2-5% | 2-6% | Tie ✅ |
 | **Memory Limit** | None | None | Tie ✅ |
 | **Code Changes** | None | None | Tie ✅ |
-| **Availability** | Xeon 4th Gen+ (2023+) | EPYC 3rd Gen+ (2021+) | SEV-SNP (older) |
-| **Cloud Support** | Limited (emerging) | Wide (Azure, GCP) | SEV-SNP |
+| **Availability** | Xeon 4th Gen+ (2023+) | EPYC 3rd Gen+ (2021+), Azure, GCP, OCI | SEV-SNP (older) |
+| **Cloud Support** | Limited (emerging) | Wide (Azure, GCP, OCI) | SEV-SNP |
 | **Maturity** | Newer | More mature | SEV-SNP |
 
 **Choose based on:** Available hardware or cloud provider, not technical differences.
@@ -186,14 +192,13 @@ Both provide VM-level memory encryption with similar characteristics:
 
 ## 💰 Cost Analysis
 
+**OCI Confidential Compute (AMD SEV-SNP):**
+- No additional charge for confidential computing—only the performance overhead applies (pricing is the same as standard VM shapes).
+
 **Azure Confidential VM (SEV-SNP):**
 - Standard_DC4as_v5 (4 vCPU, 16GB): ~$350/month
 - Comparable standard VM: ~$140/month
 - **Premium:** ~$210/month (150% more)
-
-**ROI Question:** Is memory encryption worth $210/month?
-- For government/healthcare: Yes (compliance requirement)
-- For general apps: No (invest in audit instead)
 
 ---
 
@@ -212,10 +217,10 @@ Both provide VM-level memory encryption with similar characteristics:
 - Budget-conscious projects
 
 ### Key Takeaway
-**Enclaves are a 6/10 solution for Encryptable:**
-- Excellent technology for niche use cases
-- Overkill for 95% of users
-- Better ROI from audit + best practices
+**Enclaves are a recommended solution for Encryptable:**
+- Provide strong, hardware-enforced memory protection
+- Suitable for all deployments, especially in cloud or regulated environments
+- If cost or complexity is prohibitive, follow all other best practices and consider a professional audit
 
 ---
 
@@ -224,6 +229,7 @@ Both provide VM-level memory encryption with similar characteristics:
 **Documentation:**
 - Intel TDX: https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/overview.html
 - AMD SEV: https://developer.amd.com/sev/
+- OCI Confidential Computing: https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeconfidentialcomputing.htm
 - Azure Confidential Computing: https://azure.microsoft.com/solutions/confidential-compute/
 - AWS Nitro Enclaves: https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html
 
@@ -237,4 +243,3 @@ Both provide VM-level memory encryption with similar characteristics:
 **Last Updated:** 2025-01-31  
 **Framework Version:** 1.0  
 **Recommendation:** Use standard security practices unless you have ultra-high-security requirements.
-

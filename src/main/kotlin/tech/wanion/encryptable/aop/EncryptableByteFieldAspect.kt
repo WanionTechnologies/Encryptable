@@ -9,7 +9,8 @@ import org.aspectj.lang.annotation.Pointcut
 import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.extensions.getBean
-import java.util.Collections
+import tech.wanion.encryptable.util.extensions.unreflect
+import java.util.*
 
 /**
  * # EncryptableFieldGetAspect
@@ -22,7 +23,9 @@ class EncryptableByteFieldAspect {
     companion object {
         private val setMethod = StorageHandler::class.java.getDeclaredMethod("set",
             Encryptable::class.java, String::class.java, ByteArray::class.java
-        ).also { it.isAccessible = true }
+        ).unreflect()
+
+        private val throwIfReadOnlyMethod = Encryptable::class.java.getDeclaredMethod("throwIfReadOnly").unreflect()
 
         private val storageFieldsField = Encryptable::class.java.getDeclaredField("storageFields").also { it.isAccessible = true }
     }
@@ -78,6 +81,9 @@ class EncryptableByteFieldAspect {
             return joinPoint.proceed()
 
         val fieldName = joinPoint.signature.name
+
+        throwIfReadOnlyMethod.invoke(encryptable)
+        // encryptable.throwIfReadOnly()
 
         // Ensure the storageFields list is initialized before accessing it in the storage handler
         ensureStorageInitialized(encryptable)

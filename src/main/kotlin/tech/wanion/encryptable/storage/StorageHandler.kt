@@ -10,14 +10,11 @@ import tech.wanion.encryptable.util.Limited.parallelForEach
 import tech.wanion.encryptable.util.Limited.parallelMap
 import tech.wanion.encryptable.util.extensions.first4KBChecksum
 import tech.wanion.encryptable.util.extensions.getBean
-import tech.wanion.encryptable.util.extensions.readField
 import tech.wanion.encryptable.util.extensions.metadata
+import tech.wanion.encryptable.util.extensions.readField
 import java.lang.reflect.Field
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.collections.component1
-import kotlin.collections.component2
-import kotlin.collections.set
 
 @Component
 class StorageHandler {
@@ -167,13 +164,17 @@ class StorageHandler {
                 ?: throw IllegalStateException("Reference bytes vanished for field '$fieldName' in ${encryptable::class.java.name}.")
 
             val storage = getStorageForField(field)
-            val output = ByteArray(slicedResult.originalLength)
+            val originalLength = slicedResult.originalLength
+            if (originalLength > Int.MAX_VALUE)
+                throw IllegalStateException("Original data length $originalLength for field '$fieldName' in ${encryptable::class.java.name} exceeds maximum supported size of 2 GB.")
+
+            val output = ByteArray(slicedResult.originalLength.toInt())
             val sliceSizeBytes = field.getAnnotation(Sliced::class.java).sizeMB * 1024 * 1024
 
             // Fetch and decrypt all slices in parallel.
             // Each slice writes to a non-overlapping region of output — no write conflicts.
-            (0 until slicedResult.references.size).parallelForEach { i ->
-                val referenceBytes = slicedResult.references[i]
+            (0 until slicedResult.slices.size).parallelForEach { i ->
+                val referenceBytes = slicedResult.slices[i]
 
                 val reference = storage.createReference(referenceBytes)
                     ?: throw IllegalStateException("Invalid reference for slice $i of field '$fieldName' in ${encryptable::class.java.name}.")
@@ -388,17 +389,17 @@ class StorageHandler {
      *
      * @param field The reflected [Field].
      * @param storage The [IStorage] backend.
-     * @param referenceBytes The concatenated reference [ByteArray] (4-byte header + N × refLen).
+     * @param referenceBytes The concatenated reference [ByteArray] (8-byte header + N × refLen).
      */
     private fun deleteSlices(field: Field, storage: IStorage<Any>, referenceBytes: ByteArray) {
         val refLen = storage.referenceLength
-        if (referenceBytes.size < 4 + refLen) return // malformed, nothing safe to delete
-        val refsBytes = referenceBytes.size - 4
+        if (referenceBytes.size < 8 + refLen) return // malformed, nothing safe to delete
+        val refsBytes = referenceBytes.size - 8
         if (refsBytes % refLen != 0) return // corrupted
         val sliceCount = refsBytes / refLen
 
-        (0 until sliceCount).parallelForEach { i ->
-            val refBytes = referenceBytes.copyOfRange(4 + i * refLen, 4 + (i + 1) * refLen)
+        (0 until sliceCount).parallelForEach(false) { i ->
+            val refBytes = referenceBytes.copyOfRange(8 + i * refLen, 8 + (i + 1) * refLen)
             val reference = storage.createReference(refBytes) ?: return@parallelForEach
             storage.delete(field.metadata, reference)
         }
@@ -411,9 +412,9 @@ class StorageHandler {
      *
      * Reference layout:
      * ```
-     * [0..3]                         → original plaintext length (Int, big-endian)
-     * [4 .. 4+refLen-1]              → slice 0 reference
-     * [4+refLen .. 4+2*refLen-1]     → slice 1 reference
+     * [0..7]                         → original plaintext length (Long)
+     * [8 .. 8+refLen-1]              → slice 0 reference
+     * [8+refLen .. 8+2*refLen-1]     → slice 1 reference
      * ...
      * ```
      *
@@ -427,7 +428,7 @@ class StorageHandler {
      * @param encryptField Whether to encrypt each slice with AES-256-GCM.
      * @param encryptable The owner entity — needed for key derivation when [encryptField] is true.
      * @param metadata The entity's cached metadata.
-     * @return The concatenated reference [ByteArray] (4-byte header + N × refLen).
+     * @return The concatenated reference [ByteArray] (8-byte header + N × refLen).
      */
     private fun storeAsSlices(
         bytes: ByteArray,
@@ -456,12 +457,12 @@ class StorageHandler {
             storage.bytesFromReference(storage.create(field.metadata, bytesToStore))
         }
 
-        // Build the concatenated reference: 4-byte big-endian length header + N references.
+        // Build the concatenated reference: 8-byte length header + N references.
         val refLen = storage.referenceLength
-        val result = ByteArray(4 + refLen * sliceCount)
-        ByteBuffer.wrap(result, 0, 4).putInt(bytes.size)
+        val result = ByteArray(8 + refLen * sliceCount)
+        ByteBuffer.wrap(result, 0, 8).putLong(bytes.size.toLong())
         references.forEachIndexed { i, refBytes ->
-            refBytes.copyInto(result, destinationOffset = 4 + i * refLen)
+            refBytes.copyInto(result, destinationOffset = 8 + i * refLen)
         }
         return result
     }
@@ -589,9 +590,9 @@ class StorageHandler {
      *
      * The reference [ByteArray] layout is:
      * ```
-     * [0..3]                           → 4 bytes — original plaintext data length (Int, big-endian)
-     * [4 .. 4+refLen-1]                → slice 0 reference
-     * [4+refLen .. 4+2*refLen-1]       → slice 1 reference
+     * [0..7]                           → 8 bytes — original plaintext data length (Long)
+     * [8 .. 8+refLen-1]                → slice 0 reference
+     * [8+refLen .. 8+2*refLen-1]       → slice 1 reference
      * ...
      * ```
      *
@@ -623,7 +624,7 @@ class StorageHandler {
         val refLen = storage.referenceLength
 
         // Retrieve the concatenated reference bytes from the field or the map.
-        // Do NOT gate on size == refLen here — sliced references are always 4 + refLen*N bytes,
+        // Do NOT gate on size == refLen here — sliced references are always 8 + refLen*N bytes,
         // which is larger than refLen for any N >= 1. Size validation happens below.
         val storageFieldIdMap = getStorageFieldIdMap(encryptable)
         val referenceBytes: ByteArray = storageFieldIdMap[fieldName]
@@ -633,27 +634,28 @@ class StorageHandler {
                 return null
             }
 
-        // Must have at least the 4-byte length header + one reference
-        if (referenceBytes.size < 4 + refLen) {
+        // Must have at least the 8-byte length header + one reference
+        if (referenceBytes.size < 8 + refLen) {
             logger.error("Sliced field '$fieldName' in ${encryptable::class.java.name} has invalid reference bytes: too short (${referenceBytes.size} bytes).")
             return null
         }
 
-        // Validate that the remaining bytes after the 4-byte header are a clean multiple of referenceLength
-        val refsBytes = referenceBytes.size - 4
+        // Validate that the remaining bytes after the 8-byte header are a clean multiple of referenceLength
+        val refsBytes = referenceBytes.size - 8
         if (refsBytes % refLen != 0) {
             logger.error("Sliced field '$fieldName' in ${encryptable::class.java.name} has corrupted reference bytes: $refsBytes bytes is not a multiple of referenceLength $refLen.")
             return null
         }
 
-        // Read the original plaintext data length from the 4-byte big-endian header
-        val originalLength = ByteBuffer.wrap(referenceBytes, 0, 4).int
+        // Read the original plaintext data length from the 8-byte header
+        // This is not the right place to validade the length of the original ByteArray.
+        val originalLength = ByteBuffer.wrap(referenceBytes, 0, 8).long
 
         val sliceCount = refsBytes / refLen
 
-        // Split the concatenated reference bytes into individual slice references, skipping the 4-byte header
+        // Split the concatenated reference bytes into individual slice references, skipping the 8-byte header
         val references = (0 until sliceCount).map { i ->
-            referenceBytes.copyOfRange(4 + i * refLen, 4 + (i + 1) * refLen)
+            referenceBytes.copyOfRange(8 + i * refLen, 8 + (i + 1) * refLen)
         }
 
         return SlicedResult(originalLength, references, field)

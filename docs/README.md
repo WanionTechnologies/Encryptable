@@ -42,6 +42,7 @@ Welcome to the Encryptable documentation hub. Here you'll find comprehensive gui
 | [STORAGE.md](STORAGE.md)                                               | Storage abstraction, built-in GridFS support, and custom storage backends (S3, file system, etc.) |
 | [WHO_WOULD_VALUE_THIS_FRAMEWORK.md](WHO_WOULD_VALUE_THIS_FRAMEWORK.md) | Target users and organizations for Encryptable                        |
 | [WHY_AVOIDING_STRINGS_IS_HARD_IN_JAVA.md](WHY_AVOIDING_STRINGS_IS_HARD_IN_JAVA.md) | Technical challenges of avoiding String types in Java/Kotlin          |
+| [NOT_EXACTLY_ZERO_KNOWLEDGE.md](NOT_EXACTLY_ZERO_KNOWLEDGE.md) | Security model: dual-scope (true zero-knowledge outside requests, transient knowledge during requests); explains how enclave deployment and best practices can achieve "as close as possible to zero-knowledge" in practice |
 
 ### 💡 Concepts (Ideas, Proposals, and Vision)
 | Document | Description                                            |

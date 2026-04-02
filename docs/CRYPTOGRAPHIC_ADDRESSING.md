@@ -39,7 +39,7 @@ Result: One database query + zero mapping tables
 - Server never stores the mapping between user and data
 - No password hashes to leak
 - Request-scoped (transient) knowledge: server only has access to user data and secrets during the request; secrets are not persisted
-- The server cannot access user data outside the request context, but is not strictly zero-knowledge (see [Not Zero-Knowledge](NOT_ZERO_KNOWLEDGE.md))
+- The server cannot access user data outside the request context, but is not strictly zero-knowledge (see [Not Exactly Zero-Knowledge](NOT_EXACTLY_ZERO_KNOWLEDGE.md))
 
 ### 3. **Stateless Operations** 💾
 - No session state required

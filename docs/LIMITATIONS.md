@@ -28,7 +28,7 @@ While this document will detail various technical constraints, it's important to
 
 **Bottom line:** Encryptable's limitations prove it's genuinely secure. The market will pay premium prices for real security, not security theater.
 
-> **Note:** Encryptable implements a 'transient knowledge' (request-scoped knowledge) model: secrets and keys are only present in memory for the duration of a request or operation. This is not strict 'zero-knowledge' in the cryptographic sense, but provides strong privacy guarantees by ensuring the server never persistently retains secrets or keys. For a full explanation and apology, see [Not Zero-Knowledge](NOT_ZERO_KNOWLEDGE.md).
+> **Note:** Encryptable implements a 'transient knowledge' (request-scoped knowledge) model: secrets and keys are only present in memory for the duration of a request or operation. This is not strict 'zero-knowledge' in the cryptographic sense, but provides strong privacy guarantees by ensuring the server never persistently retains secrets or keys. For a full explanation and apology, see [Not Exactly Zero-Knowledge](NOT_EXACTLY_ZERO_KNOWLEDGE.md).
 
 See [Innovations](INNOVATIONS.md) for detailed technical innovations, and [Sponsorship Goals](SPONSORSHIP_GOALS.md) for how we will be building a sustainable ecosystem around these innovations.
 
@@ -822,7 +822,7 @@ However, GCM has an **all-or-nothing property**: if even a **single bit** of the
 **What actually happens in Encryptable:**
 - ⚠️ **Silent failure with encrypted data return** - When decryption fails, `AES256.decrypt()` returns the **encrypted (corrupted) data back unchanged**
 - ✅ **Entity remains accessible** - Other fields in the entity are unaffected; only the corrupted field is lost
-- ❌ **Field is permanently unrecoverable** - The corrupted field will contain corrupted encrypted binary data instead of the original plaintext
+- ❌ **Field is permanently unrecoverable** - The corrupted field will contain corrupted encrypted data, making it unusable
 - ❌ **GridFS file corruption** - A corrupted encrypted GridFS file returns corrupted encrypted data, making the file unusable
 - ✅ **Intentional security feature** - GCM's authentication ensures tampering is detected, preventing attackers from modifying encrypted data
 

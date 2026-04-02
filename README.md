@@ -22,8 +22,8 @@ No crypto expertise required.
 }
 ```
 
-**Honest Security Model:** Request-scoped (transient knowledge). The server processes secrets during requests to encrypt/decrypt data, this is **NOT** zero-knowledge.
-**Full transparency:** [Security Model](docs/NOT_ZERO_KNOWLEDGE.md) • [Limitations](docs/LIMITATIONS.md)
+**Honest Security Model:** Request-scoped (transient knowledge). The server processes secrets during requests to encrypt/decrypt data, this is not **EXACTLY** zero-knowledge.
+**Full transparency:** [Security Model](docs/NOT_EXACTLY_ZERO_KNOWLEDGE.md) • [Limitations](docs/LIMITATIONS.md)
 
 **Learn More:** [Technical Innovations](docs/INNOVATIONS.md) • [AI Security Audit](docs/AI_SECURITY_AUDIT.md) • [Changelog](CHANGELOG.md)
 
@@ -87,7 +87,7 @@ interface DeviceRepository : EncryptableMongoRepository<Device>
 ---
 
 ## ✅ Test Runtime
-Test Runtime ✅ 106 passing tests (100%) | 0 failing  
+Test Runtime ✅ 112 passing tests (100%) | 0 failing  
 
 Detailed test overview [here](src/test/kotlin/cards/project/README.md).
 

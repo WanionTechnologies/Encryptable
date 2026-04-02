@@ -84,7 +84,7 @@ class GridFSExample(
 ) {
     /**
      * Generates a cryptographically secure secret with proper entropy
-     * Best practice: Use at least 256 bits (32 bytes) of entropy
+     * Best practice: Use at least 288 bits (36 bytes / 48 Base64 chars) of entropy
      */
     private fun generateSecret(): String = String.randomSecret()
 

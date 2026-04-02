@@ -3,8 +3,8 @@ package tech.wanion.encryptable.mongo.converter.cid
 import org.bson.types.Binary
 import org.springframework.core.convert.converter.Converter
 import org.springframework.data.convert.ReadingConverter
-import tech.wanion.encryptable.mongo.CID
-import tech.wanion.encryptable.mongo.CID.Companion.cid
+import tech.wanion.encryptable.CID
+import tech.wanion.encryptable.CID.Companion.cid
 
 /**
  * MongoDB read converter: BSON Binary (custom subtype 128) -> CID

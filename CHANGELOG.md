@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.8** (2026-02-27) - Major Improvements & Critical Security Fixes
 - **1.0.9** (2026-03-07) - Minor Fix: Nested Entity IDs Incorrectly Encrypted on `@Id` Parents & Major Test Expansion
 - **1.1.0** (2026-03-19) - ⛔ Incompatible with 1.0.x: BSON Binary subtype `0x04`→custom subtype `128` (user-defined), HKDF context key derivation fix & storage threshold minimum lowered to 1KB (default remains 16KB). No migration path — fresh database required.
+- **1.2.0** (2026-04-02) - 🔐 Enhanced Security: Master Secret Validation (74 chars), @HKDFId Secrets (48 chars), Read-Only Entity Protection, @Sliced Reference Header (8-byte Size Prefix).
 
 ---
 ## [1.0.0] - 2025-12-12 (Initial Release)
@@ -136,7 +137,7 @@ MIT License - Free and open-source forever
 ### Documentation: Zero-Knowledge → Transient Knowledge terminology
 
 - All documentation references to "zero-knowledge" or "zero-knowledge architecture" have been removed or replaced with the correct designation: "Transient Knowledge" (request-scoped knowledge).
-- Added a new document [Not Zero-Knowledge](docs/NOT_ZERO_KNOWLEDGE.md) for full explanation and apology.
+- Added a new document [Not Exactly Zero-Knowledge](docs/NOT_EXACTLY_ZERO_KNOWLEDGE.md) for full explanation and apology.
 - No code changes in this release.
 
 ---
@@ -388,6 +389,133 @@ Codepaths covered (105 tests across 16 files):
   - 36 characters: Standard UUID format with hyphens
   - All formats are transparently converted to CID, enabling seamless round-tripping with `CID.toString()` output.
 - **Impact:** Purely opt-in configuration. Default behavior provides better developer experience with Compass.
+
+---
+
+
+## [1.2.0] - 2026-04-02
+
+### ⚠️ Data Format Change: @Sliced Reference Header (4-byte → 8-byte Size Prefix)
+
+- **Changed:** The internal reference header format for `@Sliced` `ByteArray` fields has been updated. The size prefix in the reference header is now stored as an 8-byte `Long` (previously a 4-byte `Int`).
+- **Why:** This change was needed to support theoretical file sizes up to 3 petabytes (PB), far beyond the previous 2 gigabyte (GB) limit imposed by a 4-byte `Int` (Int.MAX_VALUE = 2,147,483,647 bytes). While most applications will never approach these limits, the new format ensures Encryptable remains future-proof and consistent with storage best practices.
+- **Migration:** Existing data using the old 4-byte size prefix must be migrated to the new format. A migration utility is provided to automatically update all affected documents in MongoDB. See the [migration guide](docs/MIGRATING_FROM_OTHER_VERSIONS.md#migrating-to-120-from-110) for instructions. New data will always use the new 8-byte format.
+ - **Impact:** Applications reading `@Sliced` fields from databases created with Encryptable 1.1.0 or earlier must run the migration before upgrading to 1.2.0. Failure to migrate will result in the application being completely unable to load or delete affected fields: the new code expects an 8-byte header and will not recognize or process old references with a 4-byte header at all.
+
+
+### 🔐 Enhanced Security: Master Secret & @HKDFId Validation
+
+This release significantly strengthens cryptographic entropy enforcement for both master secrets and @HKDFId entity secrets, providing a stronger security margin and improved audit posture.
+
+- **Enhanced:** Master secret validation now enforces two requirements:
+  1. **Minimum length:** At least 74 characters to guarantee 256 bits of entropy (at 3.5 bits per character minimum)
+  2. **Entropy validation:** Uses Shannon entropy analysis (same as `String.randomSecret()`) to ensure the secret has sufficient randomness
+- **Why:** Length alone does not guarantee security — a long predictable string is weaker than a truly random secret. Entropy validation ensures the master secret has sufficient cryptographic strength. The 74-character minimum with entropy ≥3.5 bits/char provides approximately 259 bits of entropy, exceeding the 256 bits required for AES-256 key derivation via HKDF-SHA256.
+- **Error Messages:**
+  - Length violation: `"Master Secret must be at least 74 characters to guarantee 256-bit entropy (got X characters)."`
+  - Entropy violation: `"Master Secret has insufficient entropy"`
+- **Audit Logging:** The framework now logs a warning when an attempt is made to update an already-set master secret, and logs an info message when the master secret is successfully set. No secret material is ever logged.
+- **Dynamic Update:** The master secret can now be updated at runtime. Changing the master secret does NOT automatically re-encrypt existing data — a secret rotation is required for that.
+- **Impact:** Any application setting the master secret programmatically must ensure the secret is both long enough AND high-entropy. Use `String.randomSecret()` or similar cryptographically-secure random generators. Environment variables and configuration files should be validated before deployment.
+
+### 🔐 @HKDFId Secret Length Increased (32 → 48 characters)
+
+- **Changed:** Minimum secret length for `@HKDFId` entities increased from 32 to 48 characters.
+- **Why:** A 48-character Base64 URL-safe secret (generated with `SecureRandom`) represents 36 bytes = 288 bits of entropy, exceeding the 256-bit AES-256 key requirement without relying on HKDF expansion. This provides a stronger security margin and aligns with the same entropy philosophy applied to the master secret.
+- **`String.randomSecret()` updated:** Default byte length changed from 32 bytes (43 chars) to 36 bytes (48 chars) to match the new minimum.
+- **Impact:** Applications that manually create secrets for `@HKDFId` entities must now provide at least 48 characters. Applications using `String.randomSecret()` are automatically compliant.
+
+⚠️ **Breaking Change Warning:**
+- **For applications previously using the 32-character minimum:** This is a breaking change. The framework will now reject any secret shorter than 48 characters for `@HKDFId` entities, throwing an `IllegalArgumentException` with message `"For HKDFID strategy, the secret must be at least 48 characters long."`
+- **Migration required:** If your application was using exactly 32-character secrets, you must update them to at least 48 characters before upgrading to 1.2.0.
+- **Recommended action:** Use `String.randomSecret()` to generate new secrets with the correct length and entropy. If manually constructing secrets, ensure they are at least 48 characters AND have sufficient entropy (Shannon entropy ≥3.5 bits/character, validated via `SecurityUtils.hasMinimumEntropy()`).
+- **Impact:** Any application setting the master secret programmatically must ensure the secret is both long enough AND high-entropy. Use `String.randomSecret()` or similar cryptographically-secure random generators. Environment variables and configuration files should be validated before deployment.
+
+### 🛠️ Dependency Update
+
+- **Spring Boot:** Upgraded from 4.0.3 to 4.0.5.
+
+### ⚡ Performance Improvement
+
+- **Improved encryption/decryption efficiency** by removing an intermediate array in the cryptographic operations. This reduces memory allocations and speeds up both encryption and decryption, especially for large or frequent operations.
+- **Enhanced reflection performance:** `Method.unreflect()` now returns a `MethodHandle` instead of the original `Method` object, leveraging near-native method access performance. Using `MethodHandle` provides significantly better performance compared to `Method.invoke()` reflection. This is especially important for frequently-called internal framework operations that use reflection to access private methods (like `throwIfReadOnly()`). Aspects and internal framework code that rely on reflected method calls now benefit from MethodHandle's near-native performance characteristics, reducing reflection overhead.
+
+### 🧹 Improved Cascade Delete Logic
+
+- **Improved cascade delete logic:** Cascade deletion is now more robust and reliable, ensuring all referenced child entities and storage resources are properly cleaned up, even in complex nested scenarios.
+
+### 📚 Improved Documentation
+
+- **Enhanced documentation** across cryptographic and security-critical components to provide clearer explanations of design decisions, entropy requirements, and performance considerations.
+
+### 🗂️ Package Reorganization
+
+- **Moved to core package:** `CID.kt`, `EncryptableInterceptor`, and `EncryptableRunner` have been moved to the `tech.wanion.encryptable` package for better organization and to reflect their role as core framework components.
+- **Impact:** Update import statements to use the new package location.
+
+### 🔒 New Feature: Read-Only Entity Protection
+
+- **Added:** New `throwIfReadOnly()` mechanism that prevents modification of entities after they have been saved.
+- **What it protects:** Mirror fields (nested entities, lists, storage references) are protected from dangerous modifications on saved entities.
+- **Why it matters:** After an entity is saved, the framework doesn't expect it to be changed right after, therefore it is not being tracked for changes. Without this prevention mechanism, allowing modifications to mirror fields would cause data corruption:
+  1. The aspect detects the modification (setting a nested entity to null, clearing lists, etc.)
+  2. It deletes the referenced data (nested entity, list items, or storage files)
+  3. But the parent entity itself is not updated (not being tracked)
+  4. The parent is left in an inconsistent state with orphaned references
+- **Why this is subtle:** Most developers wouldn't naturally think about this scenario because:
+  - Normal ORMs don't have this problem (they use lazy proxies or session-managed entities)
+  - Encryptable's aspect-based approach means modifications are *always* intercepted, even on detached entities
+  - The delete happens immediately (via aspect), but the parent entity isn't aware it's no longer tracked
+  - The corruption only manifests on the *next* load, making it difficult to diagnose
+- **Behavior:** Throws `IllegalStateException` when attempting to modify mirror fields on saved entities, preventing the corruption scenario entirely.
+- **Comprehensive Documentation:** Added detailed KDoc explaining the protection mechanism, when it triggers, and the data corruption scenarios it prevents.
+
+### 🧪 Enhanced Test Coverage: Read-Only Entity Protection
+
+- **Added comprehensive test suite** (`EncryptableAfterSaveTest`) with 6 tests covering all scenarios where entities must be protected from modification after save:
+  - Setting single nested entity fields to null
+  - Clearing lists of nested entities
+  - Setting storage-backed ByteArray fields to null
+  - Null assignments after session end (detached entities)
+  - Multiple nested fields on the same entity
+  - Adding new items to lists on detached entities
+- **Test-Driven Development:** Tests were created first and initially failed before the `throwIfReadOnly()` protection mechanism was implemented. The feature was built to make all tests pass.
+- **Verification approach:** Each test not only verifies the exception is thrown, but also confirms that the child entities/data were NOT actually deleted, proving the protection mechanism works correctly.
+- **Regression prevention:** These tests provide comprehensive coverage of the exact scenarios that could cause data corruption if mirror field protection failed.
+
+### 🔄 New Feature: Master Secret Rotation
+
+- **Added:** `MasterSecretHolder.rotateMasterSecret(oldMasterSecret, newMasterSecret)` method for rotating the master secret system-wide.
+- **⚠️ Important:** Master secret rotation is **NOT automatic**. The framework provides the infrastructure to perform rotation, but **you must manually write the business logic to trigger it**. This typically involves:
+  - A scheduled job (cron, Quartz, etc.) that periodically initiates rotation
+  - An admin endpoint that allows manual rotation triggers
+  - A background service that monitors rotation policies and executes rotation when needed
+  - The rotation must happen during a maintenance window when `@Id` entity writes are paused (see "Operational requirements" below)
+- **What it does:** Re-encrypts all `@Encrypt` fields on all `@Id` (non-isolated) entities from the old master secret to the new master secret.
+- **Scope:** 
+  - Re-encrypts `@Encrypt` String, List<String>, nested object, and ByteArray fields
+  - Handles inline ByteArray fields (stored directly in documents)
+  - Handles storage-backed ByteArray fields (stored in GridFS, S3, or other backends)
+  - Handles `@Sliced` ByteArray fields with independent encryption per slice
+  - Recursively re-encrypts inner `@Encrypt` fields of nested objects
+  - Completely skips `@HKDFId` (isolated) entities — they use per-entity secrets and are unaffected
+- **Safety guarantees:**
+  - **Idempotent retry-safe:** Uses identity checks to detect already-rotated documents. If rotation fails partway, retry safely skips documents that were already processed.
+  - **Atomic replace pattern:** For storage-backed fields, new data is created before old data is deleted, ensuring no data loss if operation fails.
+  - **All-or-nothing semantics:** Master secret is only updated after all documents across all repositories are successfully rotated. If any repository fails, the operation throws an exception and the secret is NOT updated, allowing retry.
+  - **Memory hygiene:** Old and new secrets are marked for wiping at request end.
+  - **Comprehensive logging:** Audit trail without exposing secret material (only logs metadata: entity type, document ID, timestamp, status).
+- **Operational requirements:**
+  - **Maintenance window:** Perform during a maintenance window when `@Id` entity writes are paused. Concurrent writes could result in data encrypted with either old or new secret.
+  - **Storage considerations:** For very large datasets, storage-backed fields temporarily consume double storage (new slices exist before old ones are deleted).
+  - **Performance:** Rotation speed depends on total number of `@Id` documents with `@Encrypt` fields. Uses parallel repository iteration for throughput.
+- **Usage:**
+  ```kotlin
+  val oldSecret = MasterSecretHolder.getMasterSecret()
+  val newSecret = "new-master-secret-at-least-74-chars-with-high-entropy..."
+  MasterSecretHolder.rotateMasterSecret(oldSecret, newSecret)
+  // On success, the new master secret is active; new @Id entities will use it.
+  ```
 
 ---
 

@@ -488,5 +488,4 @@ Choose @Id when convenience and shared management are acceptable.
 - [Configuration Guide](CONFIGURATION.md)
 - [Secret Rotation](SECRET_ROTATION.md)
 - [Security Best Practices](BEST_PRACTICES.md)
-- [Not Zero Knowledge](NOT_ZERO_KNOWLEDGE.md)
-
+- [Not Exactly Zero Knowledge](NOT_EXACTLY_ZERO_KNOWLEDGE.md)

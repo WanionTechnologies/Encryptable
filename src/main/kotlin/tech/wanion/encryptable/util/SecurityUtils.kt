@@ -11,7 +11,7 @@ object SecurityUtils {
      *
      * Minimum requirements:
      * - At least 22 characters for @Id (22 chars = 16 bytes = 128 bits in Base64)
-     * - At least 32 characters for @HKDFId (32 chars = 256 bits for enhanced security)
+     * - At least 48 characters for @HKDFId (48 Base64 URL-safe chars = 36 bytes = 288 bits with SecureRandom)
      * - Shannon entropy ≥ 3.5 bits per character (practical threshold)
      * - Not composed of repetitive patterns
      *
@@ -19,14 +19,14 @@ object SecurityUtils {
      * while rejecting weak secrets like "aaaaaaaaaaaaaaaaaaaaaa" or "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".
      *
      * @param secret The secret to validate
-     * @param minimumLength Minimum character length (default: 22 for @Id, use 32 for @HKDFId)
+     * @param minimumLength Minimum character length (default: 22 for @Id, use 48 for @HKDFId)
      * @return true if the secret has sufficient entropy, false otherwise
      *
      * Example usage:
      * ```kotlin
-     * // For @HKDFId (32 characters minimum)
-     * val hkdfSecret = "dGVzdF9zZWNyZXRfd2l0aF9nb29kX2VudHJvcHlfeHl6"
-     * if (SecurityUtils.hasMinimumEntropy(hkdfSecret, 32)) {
+     * // For @HKDFId (48 characters minimum)
+     * val hkdfSecret = "dGVzdF9zZWNyZXRfd2l0aF9nb29kX2VudHJvcHlfeHl6MTIzNA"
+     * if (SecurityUtils.hasMinimumEntropy(hkdfSecret, 48)) {
      *     // Use secret for HKDF derivation
      * }
      *
@@ -40,7 +40,7 @@ object SecurityUtils {
     @JvmStatic
     fun hasMinimumEntropy(secret: String, minimumLength: Int = 22): Boolean {
         // Must meet minimum length requirement
-        require(minimumLength >= 22) { "Minimum length must be at least 22 characters (22 chars = 128 bits for @Id, 32 chars = 256 bits for @HKDFId)" }
+        require(minimumLength >= 22) { "Minimum length must be at least 22 characters (22 chars = 128 bits for @Id, 48 chars = 288 bits for @HKDFId)" }
         if (secret.length < minimumLength) return false
 
         // Calculate Shannon entropy

@@ -127,7 +127,7 @@ if (user != null) { /* login successful */ }
    - The ability to retrieve the entity proves knowledge of the secret
 
 2. **Never store what you use to derive secrets**
-   - If `username + password` derives the secret → Don't store username
+   - If `username + password` derives the secret → Don't store username or password
    - If `email + pin` derives the secret → Don't store email plaintext
 
 3. **Encrypt all sensitive fields**
@@ -152,9 +152,31 @@ Before deploying, ask yourself:
 - [ ] Would a database dump reveal user identities? → Fix your schema
 - [ ] Are secrets/decrypted data wiped after use? → Use `markForWiping`
 
+---
+
+## 🏰 Advanced: Deploying Encryptable in Memory Enclaves
+
+> **Highly recommended:** For maximum security, an Encryptable application should be run inside a hardware-backed memory enclave whenever possible. This ensures that secrets remain protected even from the host OS and administrators.
+
+For the highest level of security, run Encryptable inside a hardware-backed memory enclave (trusted execution environment). Enclaves protect secrets even from the host OS and administrators, ensuring that cryptographic material is only ever present in protected memory.
+
+**Supported enclave platforms include:**
+- Intel SGX (Software Guard Extensions)
+- AWS Nitro Enclaves
+- Oracle Cloud Infrastructure (OCI) AMD Secure Enclaves
+
+**Best practices for enclave deployment:**
+- Never log secrets or sensitive data
+- Disable core dumps and memory swapping
+- Use secure memory wiping for all cryptographic material
+- Regularly audit code and operational procedures for leaks
+
+For a full explanation of enclave benefits and limitations, see [Encrypted Memory Enclaves](ENCRYPTED_MEMORY_ENCLAVES.md).
+
+---
+
 ### 📚 Related Documentation
 
 - [Transient Knowledge Authentication](concepts/TRANSIENT_KNOWLEDGE_AUTH.md)
 - [Recovery Codes](RECOVERY_CODES.md)
 - [Memory Hygiene in Encryptable](MEMORY_HIGIENE_IN_ENCRYPTABLE.md)
-

@@ -7,6 +7,7 @@ import org.aspectj.lang.annotation.Pointcut
 import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.extensions.getBean
+import tech.wanion.encryptable.util.extensions.unreflect
 
 /**
  * # EncryptablePrepareAspect
@@ -18,7 +19,7 @@ class EncryptablePrepareAspect {
         private val prepareMethod = StorageHandler::class.java.getDeclaredMethod(
             "prepare",
             Encryptable::class.java
-        ).also { it.isAccessible = true }
+        ).unreflect()
     }
 
     /** StorageHandler instance for handling storage operations related to byte[] fields. */

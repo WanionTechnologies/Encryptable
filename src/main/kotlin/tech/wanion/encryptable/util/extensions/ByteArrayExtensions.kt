@@ -1,11 +1,11 @@
 package tech.wanion.encryptable.util.extensions
 
+import tech.wanion.encryptable.config.EncryptableConfig
+import tech.wanion.encryptable.util.Limited.parallelForEach
 import java.io.ByteArrayOutputStream
+import java.lang.reflect.Field
 import java.security.MessageDigest
 import java.util.*
-import tech.wanion.encryptable.util.Limited.parallelForEach
-import tech.wanion.encryptable.config.EncryptableConfig
-import java.lang.reflect.Field
 
 /**
  * Converts this ByteArray to a hexadecimal string representation.

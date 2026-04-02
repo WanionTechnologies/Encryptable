@@ -183,12 +183,12 @@ For full details and limitations, see [Limitations](LIMITATIONS.md).
 2. **Automatic entropy validation** (Shannon entropy + repetition checking)
 3. **Per-entity cryptographic isolation** without key storage
 4. **Request-scoped secret lifecycle** with automatic memory wiping
-5. **AspectJ-based transparent encryption/decryption** of nested fields
+5. **Transparent encryption/decryption** of nested fields
 6. **Polymorphic relationship support** with automatic type preservation
 7. **Cascade delete** across encrypted references
 8. **GridFS integration** with automatic encryption/decryption and lazy loading
 9. **Automatic change detection** via field hashing
-10. **2700+ lines of production code** with 81 passing tests
+10. **3400+ lines of production code** with 106 passing tests
 
 **If it's so easy, where are the alternatives?**
 
@@ -282,7 +282,7 @@ See [Limitations](LIMITATIONS.md) and [Security Without Audit](SECURITY_WITHOUT_
    - AspectJ weaving strategy
 
 2. **All Production Code**
-   - 2700+ lines of Kotlin implementation
+   - 3400+ lines of Kotlin implementation
    - Entity base classes (`Encryptable<T>`)
    - Repository implementations (`EncryptableMongoRepository`)
    - Cryptographic utilities (HKDF, AES, CID)
@@ -323,7 +323,7 @@ See [Limitations](LIMITATIONS.md) and [Security Without Audit](SECURITY_WITHOUT_
    - Cross-referencing between documents
 
 5. **Test Generation**
-   - 81 unit and integration tests
+   - 106 unit and integration tests
    - Test entities and repositories
    - Test scenarios and edge cases
    - Test data generation and assertions
@@ -362,13 +362,13 @@ See [Limitations](LIMITATIONS.md) and [Security Without Audit](SECURITY_WITHOUT_
 #### 🛡️ **Verification:**
 
 The code speaks for itself:
-- ✅ 2700+ lines of production code (view on GitHub)
-- ✅ 81 passing tests verify the code works (even though tests were AI-generated)
+- ✅ 3400+ lines of production code (view on GitHub)
+- ✅ 106 passing tests verify the code works (even though tests were AI-generated)
 - ✅ Novel architecture (compare to alternatives)
 - ✅ Consistent commit history (months of development)
 - ✅ Technical depth (not surface-level AI generation)
 
-**You can verify that this is real, working, innovative software - not AI-generated vaporware.**
+**You can verify that this is real, working, innovative. not AI-generated vaporware/slop.**
 
 **Note on tests:** While the tests themselves were AI-generated, they verify that human-written production code functions correctly. Think of it as AI helping with QA, not replacing human engineering.
 
@@ -376,23 +376,22 @@ The code speaks for itself:
 
 ### 🔑 What happens if I lose my secret?
 
-**The data is lost forever.** This is by design.
-
-Encryptable implements true zero-knowledge architecture, which means:
+Encryptable implements a true zero-knowledge architecture outside of the request scope:
 - The server cannot reconstruct your secret
 - The server cannot reset your password
 - The server cannot access your data without your secret
-- No "forgot password" recovery is possible
+- No "forgot password" recovery is possible by default
 
-This is a feature, not a bug. True zero-knowledge means the server has **zero** knowledge of your data.
+This is a feature, not a bug. True zero-knowledge means the server has zero knowledge of your data outside of the request.
 
-**Best practices:**
-- Use secure secret storage (password managers, hardware keys)
-- Implement client-side secret backup mechanisms if needed
-- Make users aware that lost secrets cannot be recovered
-- Consider multi-factor approaches for high-value accounts
+However, inside a request (transient knowledge), Encryptable temporarily holds the secret in memory only for the duration of the request. This is necessary to perform cryptographic operations (such as decrypting or encrypting data) on behalf of the user. Once the request is complete, all secrets are wiped from memory, returning the system to a true zero-knowledge state.
 
-See [Security Without Secret](SECURITY_WITHOUT_SECRET.md) for strategies.
+This dual-scope approach ensures that:
+- The server never persists secrets or sensitive data beyond the request
+- All cryptographic operations are performed securely and only when authorized by the user’s active session
+- The zero-knowledge guarantee is maintained outside of active requests
+
+If you lose your secret, there is no way for the server to recover your data. Recovery flows (such as recovery codes) must be explicitly implemented and managed by the application, and even then, the server never has access to your secret outside of the request context.
 
 ### 🔍 Why can't I query encrypted fields?
 
@@ -869,6 +868,7 @@ val response = orderServiceClient.createOrder(
 // Order Service - uses same secret
 class Order : Encryptable<Order>() {
     @HKDFId override var id: CID? = null
+    
     var userId: String? = null  // Reference to user (not encrypted)
     @Encrypt var shippingAddress: Address? = null
 }
@@ -1071,13 +1071,13 @@ class User : Encryptable<User>() {
 - ✅ Can search by username
 - ✅ Can see account status, creation date
 - ❌ Cannot see email, address (encrypted)
-- ✅ Can ban/suspend users (via username)
 
 **Verdict:** Admins can manage accounts but cannot see PII.
 
 ---
 
-**Scenario 3: Traditional approach (@Id + partial encryption):**
+**Scenario 3: Traditional approach (@Id + partial encryption)**
+
 ```kotlin
 class User : Encryptable<User>() {
     @Id override var id: CID? = null
@@ -1087,13 +1087,38 @@ class User : Encryptable<User>() {
     @Encrypt var ssn: String? = null  // Encrypted (admin cannot see)
 }
 ```
+
 **Admin capabilities:**
+
+- ✅ Can enumerate all users (`findAll()`)
+- ✅ Can see email (not encrypted)
+- ✅ Can search by email
+- ✅ Can see SSN (encrypted with master secret)
+
+**Note:** For `@Id` entities, fields annotated with `@Encrypt` are encrypted with the master secret. If the admin has access to the master secret, they can decrypt all fields, including sensitive ones like SSN. This means admins with the master secret can access everything, including `@Encrypt` fields.
+
+---
+
+### Scenario 4: Per-entity zero-knowledge (@HKDFId + full isolation)
+
+```kotlin
+class User : Encryptable<User>() {
+    @HKDFId override var id: CID? = null
+    
+    var username: String? = null
+    var email: String? = null  // NOT encrypted (admin can see)
+    @Encrypt var ssn: String? = null  // Encrypted (admin cannot see)
+}
+```
+
+**Admin capabilities:**
+
 - ✅ Can enumerate all users (`findAll()`)
 - ✅ Can see email (not encrypted)
 - ✅ Can search by email
 - ❌ Cannot see SSN (encrypted)
 
-**Verdict:** Admins can do everything except access highly sensitive fields.
+**Verdict:** For `@HKDFId` entities, each entity is encrypted with a unique secret derived from the user's credentials. Even with the master secret, admins cannot decrypt `@Encrypt` fields like SSN. This provides true zero-knowledge for sensitive fields, and only the user with the correct secret can access them.
 
 ---
 

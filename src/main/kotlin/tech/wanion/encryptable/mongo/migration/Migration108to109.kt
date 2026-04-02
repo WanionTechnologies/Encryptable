@@ -3,8 +3,8 @@ package tech.wanion.encryptable.mongo.migration
 import com.mongodb.client.MongoCollection
 import org.bson.Document
 import org.slf4j.LoggerFactory
-import tech.wanion.encryptable.MasterSecretHolder
 import tech.wanion.encryptable.EncryptableContext
+import tech.wanion.encryptable.MasterSecretHolder
 import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.util.AES256
 import tech.wanion.encryptable.util.Limited.parallelForEach
@@ -62,10 +62,13 @@ import tech.wanion.encryptable.util.extensions.decode64
  * not be touched.
  */
 class Migration108to109 : Migration {
+    /** Logger instance for logging migration progress and any issues encountered during the migration process. */
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
-    private val logger = LoggerFactory.getLogger(Migration108to109::class.java)
-
+    /** The source version for this migration */
     override fun fromVersion(): String = "1.0.8"
+
+    /** The target version for this migration */
     override fun toVersion(): String = "1.0.9"
 
     /**

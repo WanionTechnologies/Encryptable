@@ -17,10 +17,11 @@ This document addresses common criticisms of Encryptable and provides factual re
 
 #### **The Facts:**
 - ✅ We corrected this terminology in v1.0.3 (8 days after initial release)
-- ✅ Current documentation clearly states "NOT zero-knowledge"
+- ✅ Current documentation clearly states "NOT EXACTLY zero-knowledge" and explains the dual-scope model (true zero-knowledge outside requests, transient knowledge during requests)
 - ✅ We introduced accurate terminology: "transient knowledge" (request-scoped)
-- ✅ We published a dedicated explanation: [NOT_ZERO_KNOWLEDGE.md](NOT_ZERO_KNOWLEDGE.md)
-- ✅ README prominently states: **"this is NOT zero-knowledge"**
+- ✅ We published a dedicated explanation: [NOT_EXACTLY_ZERO_KNOWLEDGE.md](NOT_EXACTLY_ZERO_KNOWLEDGE.md)
+- ✅ README prominently states: **"this is NOT exactly zero-knowledge"**
+- ✅ Running Encryptable in a hardware-backed memory enclave (Intel SGX, AWS Nitro, OCI AMD Secure Enclaves) is highly recommended for maximum security. See [Best Practices](BEST_PRACTICES.md).
 
 #### **Why This Criticism Is Unfair:**
 - The terminology was corrected immediately upon feedback
@@ -29,8 +30,8 @@ This document addresses common criticisms of Encryptable and provides factual re
 - Many security projects have had similar terminology evolutions
 
 #### **The Reality:**
-Encryptable achieves **request-scoped (transient) knowledge** - secrets exist only in memory during request processing, then are wiped. This is:
-- ✅ As close to zero-knowledge as backend-only systems can achieve
+Encryptable achieves **request-scoped (transient) knowledge**—secrets exist only in memory during request processing, then are wiped. This is:
+- ✅ As close to zero-knowledge as backend-only systems can achieve (and even closer when deployed in a memory enclave)
 - ✅ More private than traditional "zero-knowledge" systems that store user identities
 - ✅ Fundamentally different from systems that persistently store secrets
 
@@ -53,7 +54,7 @@ Encryptable achieves **request-scoped (transient) knowledge** - secrets exist on
 |--------------|----------------------|-------------|
 | **Stolen hard drive** | ✅ Protected | ✅ Protected |
 | **Database admin can read data** | ❌ **EXPOSED** | ✅ **PROTECTED** |
-| **Sysadmin can dump memory** | ❌ **EXPOSED** | ⚠️ Protected (outside request) |
+| **Sysadmin can dump memory** | ❌ **EXPOSED** | ⚠️ Protected (outside request); 🏰 Strongly mitigated with enclave deployment |
 | **Insider threat (employee)** | ❌ **EXPOSED** | ✅ **PROTECTED** |
 | **Password reset by admin** | ❌ **POSSIBLE** | ✅ **IMPOSSIBLE** |
 | **User enumeration** | ❌ **POSSIBLE** | ✅ **IMPOSSIBLE** |

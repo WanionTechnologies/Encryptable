@@ -196,9 +196,20 @@ Comprehensive test coverage for Encryptable MongoDB encryption framework.
 
 **14 tests** verifying that the correct encryption key is used for every field type and ID strategy combination, and that `encryptableFieldMap` / `encryptableListFieldMap` store the correct value (encrypted secret for isolated parents, plaintext ID for non-isolated parents and `@SimpleReference` fields). Bypasses the framework's decrypt path entirely — reads raw ciphertext or raw map values directly via reflection.
 
+### 16. **EncryptableAfterSaveTest.kt** - Mirror Field Protection After Save
+
+- ✅ Prevent setting nested entity field to null after save (data consistency protection)
+- ✅ Prevent clearing list of nested entities after save
+- ✅ Prevent setting sliced ByteArray field to null after save
+- ✅ Prevent removing nested entity reference after save
+- ✅ Prevent setting second nested entity field to null after save
+- ✅ Prevent adding items to list after save
+
+**6 tests** verifying that mirror fields (`encryptableFieldMap`, `encryptableListFieldMap`, `storageFieldIdMap`) are protected from modification after an entity is saved. This prevents data corruption that would occur if untracked entities could delete their external references.
+
 ## Total Coverage
 
-- **106 test cases** across 16 test files
+- **112 test cases** across 17 test files
 - All major framework features tested
 - Edge cases and error scenarios covered
 - Integration tests for complex workflows

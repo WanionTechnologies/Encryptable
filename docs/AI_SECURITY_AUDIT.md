@@ -2,13 +2,13 @@
 
 ## Document Information
 
-**Audit Date:** 2026-03-19  
-**Framework Version:** 1.1.0  
+**Audit Date:** 2026-04-02  
+**Framework Version:** 1.2.0  
 **Audit Type:** AI Security Analysis  
 
 **🚨 DISCLAIMER:** This is an automated security analysis, not a substitute for professional audit by qualified cryptographers. Professional third-party audit strongly recommended before production deployment with sensitive data.
 
-**Why No Professional Audit Yet?** Cost ($4k-6k for ~116 lines of core crypto — `AES256.kt` and `HKDF.kt`). Both delegate entirely to `javax.crypto` (JDK built-in, FIPS 140-2 validated) and `at.favre.lib:hkdf` (RFC 5869 wrapper over `javax.crypto.Mac`), so the auditor is reviewing **correct usage** of well-proven APIs, not the primitives themselves. Callsite verification (~743 lines) is already covered by `EncryptableKeyCorrectnessTest` (105 tests across 16 files — every field type, every ID strategy, every codepath including `@Sliced`, all with raw-ciphertext assertions that bypass the framework decrypt path), making manual callsite inspection redundant. The effective audit scope is therefore the narrowest possible for a framework of this capability.
+**Why No Professional Audit Yet?** Cost ($4k-6k for ~116 lines of core crypto — `AES256.kt` and `HKDF.kt`). Both delegate entirely to `javax.crypto` (JDK built-in, FIPS 140-2 validated) and `at.favre.lib:hkdf` (RFC 5869 wrapper over `javax.crypto.Mac`), so the auditor is reviewing **correct usage** of well-proven APIs, not the primitives themselves. Callsite verification (~743 lines) is already covered by `EncryptableKeyCorrectnessTest` (112 tests across 16 files — every field type, every ID strategy, every codepath including `@Sliced`, all with raw-ciphertext assertions that bypass the framework decrypt path), making manual callsite inspection redundant. The effective audit scope is therefore the narrowest possible for a framework of this capability.
 
 ---
 
@@ -16,8 +16,8 @@
 
 - ✅ **Production-grade cryptography** - AES-256-GCM, HKDF (same as Signal, TLS 1.3, WireGuard)
 - ✅ **Transient knowledge (request-scoped)** - NO user data stored (not username, not password, NOTHING)
-- ✅ **Only attack vector: brute force** - 2^256 search space = computationally impossible
-- ✅ **Quantum-resistant** - 128-bit effective security post-quantum (still infeasible)
+- ✅ **Only attack vector: brute force** - 2^288 search space = computationally impossible
+- ✅ **Quantum-resistant** - 144-bit effective security post-quantum (still infeasible)
 - ✅ **Memory hygiene** - Proactive wiping of secrets, fail-fast if clearing fails
 - ⚠️ **No professional audit yet** - Cost: $4-6k (seeking funding)
 - ✅ **Ready for production** - Startups, SaaS, web apps (regulated industries need audit for compliance)
@@ -37,11 +37,11 @@
 2. ✅ **Transient knowledge (request-scoped)** architecture (INNOVATION: no user data stored - not username, not password, not 2FA secrets, NOTHING)
 3. ✅ Authenticated encryption (confidentiality + integrity)
 4. ✅ Secure failure handling (prevents plaintext exposure)
-5. ✅ Minimum 32-character secret enforcement
+5. ✅ Minimum 48-character secret enforcement for `@HKDFId` (288 bits), minimum 74-character master secret for `@Id` entities
 6. ✅ Minimum entropy enforcement for all secrets and CIDs (Shannon entropy ≥3.5 bits/char, ≥25% unique chars)
-7. ✅ Timing attack resistant (2^256 search space)
+7. ✅ Timing attack resistant (2^288 search space)
 8. ✅ Clear scope definition (framework vs app responsibilities)
-9. ✅ **Quantum-safe:** Enforced secret/key sizes (AES-256, @HKDFId with 256 bits) remain secure even against quantum computers; brute-force attacks would require timeframes vastly exceeding the age of the universe. The architecture avoids asymmetric cryptography (the main target of quantum attacks). @Id entities can now use @Encrypt with the master secret (previously unsupported), providing encryption for public identifiers with encrypted metadata.
+9. ✅ **Quantum-safe:** Enforced secret/key sizes (AES-256, @HKDFId with 288 bits) remain secure even against quantum computers; brute-force attacks would require timeframes vastly exceeding the age of the universe. The architecture avoids asymmetric cryptography (the main target of quantum attacks). @Id entities can now use @Encrypt with the master secret (previously unsupported), providing encryption for public identifiers with encrypted metadata.
 10. ✅ **Memory exposure mitigation:** The framework proactively wipes secrets and sensitive data from JVM memory at the end of each request, drastically reducing the risk of accidental secret exposure in memory dumps or forensic analysis. Failures in wiping trigger a fail-fast exception, ensuring privacy issues never go unnoticed.
 
 ### Important Context
@@ -76,13 +76,13 @@ The following dependencies are required for Encryptable.\
 
 | Dependency | Version |
 |------------|---------|
-| org.jetbrains.kotlin:kotlin-stdlib | 2.2.21 |
-| org.jetbrains.kotlin:kotlin-reflect | 2.2.21 |
-| org.springframework.boot:spring-boot-starter-webmvc | 4.0.3 |
-| org.springframework.boot:spring-boot-starter-data-mongodb | 4.0.3 |
-| at.favre.lib:hkdf | 2.0.0 |
-| org.aspectj:aspectjrt | 1.9.25 |
-| org.aspectj:aspectjweaver | 1.9.25 |
+| org.jetbrains.kotlin:kotlin-stdlib | 2.2.21  |
+| org.jetbrains.kotlin:kotlin-reflect | 2.2.21  |
+| org.springframework.boot:spring-boot-starter-webmvc | 4.0.5   |
+| org.springframework.boot:spring-boot-starter-data-mongodb | 4.0.5   |
+| at.favre.lib:hkdf | 2.0.0   |
+| org.aspectj:aspectjrt | 1.9.25  |
+| org.aspectj:aspectjweaver | 1.9.25  |
 
 > **Note:** These versions are based on the current `build.gradle.kts` and may be updated in future releases. Always check the latest starter for up-to-date versions.
 
@@ -127,12 +127,40 @@ Encryptable will **not run** unless the required JVM arguments are set. This is 
   - ✅ RFC 5869 compliant — trivially verifiable against the spec (~200 lines of open source code)
   - ⚠️ No published independent audit report — however, given it delegates entirely to JDK cryptographic primitives, the risk surface is minimal and limited to the correctness of the RFC 5869 expand/extract logic itself
 - **Enforcement:**
-  - Secrets for `@HKDFId` must be at least 32 characters (256 bits)
-  - Random CIDs for `@Id` must be exactly 22 characters (Base64, URL-Safe, No-padding, representing 128 bits)
-  - All randomly generated secrets must pass entropy validation:
-    - Minimum 3.5 bits/character Shannon entropy
-    - At least 25% unique characters
-    - This prevents weak secrets such as "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   - Secrets for `@HKDFId` must be at least 48 characters (288 bits with SecureRandom)
+   - Master secret for `@Id` entities must be at least 74 characters (≥259 bits of entropy at 3.5 bits/char, exceeding the 256 bits required for AES-256 key derivation)
+   - Random CIDs for `@Id` must be exactly 22 characters (Base64, URL-Safe, No-padding, representing 128 bits)
+   - All randomly generated secrets must pass entropy validation:
+     - Minimum 3.5 bits/character Shannon entropy
+     - At least 25% unique characters
+     - This prevents weak secrets such as "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+**Why 74 Characters for Master Secret, but Only 48 for @HKDFId?**
+
+The different minimum lengths reflect the different entropy guarantees:
+
+| ID Type | Min Length | Entropy Source | Bits/Char | Total Entropy | Security |
+|---------|-----------|---|---|---|---|
+| `@HKDFId` | 48 chars | `SecureRandom` Base64 (ideal) | **6.0** | 288 bits | ✅ Excellent |
+| Master Secret (`@Id`) | 74 chars | User-provided text (validated min) | **3.5** | 259 bits | ✅ Excellent |
+
+**The Critical Difference:**
+
+- **`@HKDFId` (48 chars):** Generated by `SecureRandom` in Base64, which produces a perfectly uniform distribution over 64 symbols. Each character carries exactly **6 bits** of entropy (log₂64 = 6). Thus, 48 × 6 = 288 bits — far exceeding the 256 bits required for AES-256. **Validation:** Length only (no entropy validation needed, SecureRandom guarantees quality).
+
+- **Master Secret (74 chars):** User-provided text (passwords, configuration values, etc.) cannot be assumed to have 6 bits/char entropy. The framework enforces **entropy validation** with a **minimum** of 3.5 bits/char (typical of reasonably complex strings: mixed case, digits, symbols). At this validated floor:
+  - 48 chars × 3.5 bits = 168 bits ❌ (88-bit gap below 256-bit target)
+  - 74 chars × 3.5 bits = 259 bits ✅ (safely exceeds 256-bit requirement)
+
+**Why Not Just Use SecureRandom for Master Secrets?**
+
+Master secrets must often be stored in configuration files, environment variables, or key management systems for server-side use. They cannot always be SecureRandom-generated at runtime (unlike `@HKDFId`, which is generated fresh for each entity). Therefore, the framework must accommodate user-provided secrets and enforce a **mathematical guarantee** that even at the entropy floor (3.5 bits/char), the total entropy cannot fall below 256 bits. This requires 74 characters.
+
+**In Summary:** Framework validation differs by source:
+- **`@HKDFId`:** Validates length only (48 chars minimum) — SecureRandom is inherently high-entropy
+- **Master Secret:** Validates both length (74 chars minimum) AND entropy (≥3.5 bits/char) — user-provided text requires conservative guarantees
+
+This ensures both security models reach the same cryptographic strength (≥256 bits of effective entropy).
 
 **Limitation:** Cannot validate entropy generated from user details (e.g., username, password, 2FA secret).
 - If the secret was deterministically derived from user input, it could have low entropy and could be rejected by entropy validation, even if it is valid for authentication.\
@@ -171,7 +199,7 @@ Even with identical secrets and source classes, the different context strings en
 
 ### 1.4 Timing Attack Resistance ✅ Excellent
 - **Attack Vector:** Timing analysis of `findBySecret()` operations to brute-force secrets
-- **Defense:** Cryptographic infeasibility (2^256 search space for 32-character @HKDFId secrets, 2^128 for 22-character @Id)
+- **Defense:** Cryptographic infeasibility (2^288 search space for 48-character @HKDFId secrets, 2^128 for 22-character @Id)
 - **Framework behavior:** No secret comparison; secrets derive CIDs via HKDF (one-way)
 - **Result:** Even with perfect timing information, brute-force requires longer than age of universe
 
@@ -185,9 +213,9 @@ In practice, this means that even with unlimited access to timing data, an attac
 - **HKDF overhead:** Each attempt requires expensive HKDF computation
 - **Network overhead:** Each `findBySecret()` call involves database round-trip latency
 - **Rate limiting:** Applications can implement rate limiting (Encryptable doesn't provide this - it's application-level so developers can configure for their specific needs)
-- **Actual time:** 2^256 × (HKDF_time + network_latency + rate_limit_delays) ≫≫≫ age of universe
+- **Actual time:** 2^288 × (HKDF_time + network_latency + rate_limit_delays) ≫≫≫ age of universe
 
-**💡 Critical Note:** If timing attacks could break this (they can't), it would compromise ALL users—not just one. This is actually a strength: either the cryptography is secure (it is ✅), or everything fails. There's no partial compromise. Since 2^256 (@HKDFId) is computationally infeasible even for pure cryptographic operations, adding HKDF + network overhead + rate limiting makes it **astronomically more impossible**. Same principle applies to all cryptographic systems (Signal, TLS, banking, etc.).
+**💡 Critical Note:** If timing attacks could break this (they can't), it would compromise ALL users—not just one. This is actually a strength: either the cryptography is secure (it is ✅), or everything fails. There's no partial compromise. Since 2^288 (@HKDFId) is computationally infeasible even for pure cryptographic operations, adding HKDF + network overhead + rate limiting makes it **astronomically more impossible**. Same principle applies to all cryptographic systems (Signal, TLS, banking, etc.).
 
 ## 🛡️ Note on Side-Channel (Timing) Attacks
 
@@ -222,31 +250,31 @@ HKDF output is limited by the hash function's output size (SHA-256 = 256 bits, S
 
 **🔐 Critical Security Point: CID is Only an Address, not a Secret!**
 
-**Framework Enforcement:** Encryptable enforces **minimum 32 characters (256 bits) for `@HKDFId` secrets** and minimum 22 characters (128 bits) for `@Id` random CIDs. For `@HKDFId`, the 32-character secret is compressed to a 16-byte (128-bit) CID via HKDF, permanently losing 128 bits of information. Additionally, random CID generation validates entropy using Shannon entropy calculation (≥3.5 bits/character) and repetition checking (≥25% unique characters), automatically regenerating if insufficient entropy is detected.
+**Framework Enforcement:** Encryptable enforces **minimum 48 characters (288 bits with SecureRandom) for `@HKDFId` secrets** and minimum 22 characters (128 bits) for `@Id` random CIDs. For `@HKDFId`, the 48-character secret (36 bytes) is compressed to a 16-byte (128-bit) CID via HKDF, permanently losing 160 bits of information. Additionally, random CID generation validates entropy using Shannon entropy calculation (≥3.5 bits/character) and repetition checking (≥25% unique characters), automatically regenerating if insufficient entropy is detected.
 
 **Mathematical Security Guarantee:**
 1. **CID cannot decrypt data** - The CID is just a database lookup key (address)
 2. **Decryption requires the ORIGINAL SECRET** - Not the CID
 3. **Reversing HKDF is mathematically impossible:**
-   - **@HKDFId:** 32 characters (256 bits) → 16 bytes (128 bits) = **128 bits of information permanently lost**
-   - Cannot recover lost information (pigeonhole principle - cannot fit 256 bits into 128 bits)
-   - Even if you could "reverse" HKDF (impossible), there are **2^128 (340 undecillion) possible 32-character secrets** that could generate the same CID
+   - **@HKDFId:** 48 characters (288 bits) → 16 bytes (128 bits) = **160 bits of information permanently lost**
+   - Cannot recover lost information (pigeonhole principle — cannot fit 288 bits into 128 bits)
+   - Even if you could "reverse" HKDF (impossible), there are **2^160 possible 48-character secrets** that could generate the same CID
    - No way to determine which secret is correct, even with infinite computing power
 4. **Information-theoretic security:** This is not just computationally hard—it's mathematically impossible. No future technology (not even quantum computers) can recover information that was permanently lost during compression.
 
 **Security Model:**
 ```
-@HKDFId Secret (≥32 chars = 256 bits) → HKDF → CID (16 bytes = 128 bits) → Database lookup → Encrypted data
-                                                  ↓
-                                           Just an address!
-                                           (128 bits permanently lost)
+@HKDFId Secret (≥48 chars = 288 bits) → HKDF → CID (16 bytes = 128 bits) → Database lookup → Encrypted data
+                                                   ↓
+                                            Just an address!
+                                            (160 bits permanently lost)
 
 To decrypt: Secret → Derive encryption key → Decrypt ✅
-From CID: CID → 2^128 possible 32-char secrets → Cannot determine correct one → Cannot decrypt ❌
+From CID: CID → 2^160 possible 48-char secrets → Cannot determine correct one → Cannot decrypt ❌
 ```
 
 **Conclusion:** 
-- CID reversal is **mathematically impossible** due to information loss (256 bits → 128 bits)
+- CID reversal is **mathematically impossible** due to information loss (288 bits → 128 bits)
 - Even if CID collisions could be found (they can't), they would only affect database lookups, NOT decryption security
 - The original secret is always required for decryption—CID is merely an address
 - This provides **information-theoretic security**, not just computational security
@@ -260,12 +288,12 @@ From CID: CID → 2^128 possible 32-char secrets → Cannot determine correct on
 
 **The ONLY Attack Vector: Brute Force**
 
-After comprehensive analysis, the framework has **only one attack vector**: brute-forcing the 256-bit secret.
+After comprehensive analysis, the framework has **only one attack vector**: brute-forcing the 288-bit secret.
 
 **Why brute force is the only option:**
-- ✅ **CID reversal:** Mathematically impossible (128 bits of information permanently lost)
+- ✅ **CID reversal:** Mathematically impossible (160 bits of information permanently lost)
 - ✅ **Cryptographic weaknesses:** None (AES-256-GCM and HKDF are proven secure)
-- ✅ **Timing attacks:** Infeasible (2^256 search space)
+- ✅ **Timing attacks:** Infeasible (2^288 search space)
 - ✅ **Credential stuffing:** Impossible (no credentials stored)
 - ✅ **Rainbow tables:** Ineffective (HKDF + unique keys per entity)
 - ✅ **IV reuse:** Prevented (unique IV per operation)
@@ -273,14 +301,14 @@ After comprehensive analysis, the framework has **only one attack vector**: brut
 
 **Brute Force Feasibility:**
 ```
-@HKDFId (32 chars): 2^256 possible secrets = 1.16 × 10^77 possibilities
-At 1 trillion attempts/second = 3.67 × 10^57 years (2.8 × 10^49 × age of universe)
+@HKDFId (48 chars): 2^288 possible secrets = 4.97 × 10^86 possibilities
+At 1 trillion attempts/second = 1.58 × 10^67 years (1.15 × 10^57 × age of universe)
 
 @Id (22 chars): 2^128 possible secrets = 3.4 × 10^38 possibilities  
 At 1 trillion attempts/second = 1.08 × 10^19 years (780 million × age of universe)
 
 With rate limiting (10 attempts/second):
-@HKDFId = 3.67 × 10^69 years
+@HKDFId = 4.97 × 10^78 years
 @Id = 1.08 × 10^28 years
 
 Result: Mathematically impossible for both
@@ -292,12 +320,12 @@ With proper implementation (high-entropy secrets + rate limiting), Encryptable i
 - ✅ **No cryptographic vulnerabilities** (industry-standard algorithms)
 - ✅ **No active implementation flaws** (see note below — applies to 1.0.9+, regression tests added)
 - ✅ **Attack surface minimized** (no credentials, no identity storage)
-- ✅ **Only attack is brute force** (2^256 search space = computationally infeasible)
+- ✅ **Only attack is brute force** (2^288 search space = computationally infeasible)
 - ✅ **With mitigations:** Practically and mathematically impossible to break through cryptographic means alone
 
 **Security Level: Information-Theoretic + Computational**
 - Information-theoretic: CID reversal mathematically impossible (information loss)
-- Computational: Brute force computationally infeasible (2^256 search space)
+- Computational: Brute force computationally infeasible (2^288 search space)
 - Combined: Secure against all known and foreseeable cryptographic attacks
 
 **Important limitations:**
@@ -329,8 +357,8 @@ With proper implementation (high-entropy secrets + rate limiting), Encryptable i
 > transparency on the 1.0.8 incident: [MISSED_CALLSITE_BUG_1_0_8.md](MISSED_CALLSITE_BUG_1_0_8.md)
 
 **Requirements for maximum security:**
-1. ✅ Framework: Minimum 32 characters (256 bits) for @HKDFId, 22 characters (128 bits) for @Id, with entropy validation (enforced)
-2. ⚠️ Application: High-entropy secrets recommended (40+ random Base64 characters for @HKDFId for higher security margin)
+1. ✅ Framework: Minimum 48 characters (288 bits) for @HKDFId, 22 characters (128 bits) for @Id CIDs, 74 characters for master secret (≥259 bits entropy), all with entropy validation (enforced)
+2. ⚠️ Application: High-entropy secrets recommended (50+ random Base64 characters for @HKDFId for higher security margin)
 3. ⚠️ Application: Rate limiting implemented (10-100 attempts/second)
 4. ⚠️ Application: Account lockout after N failures
 5. ⚠️ Infrastructure: DDoS protection, monitoring
@@ -356,8 +384,8 @@ Encryptable uses only symmetric cryptography (AES-256-GCM) and hash-based key de
 
 **Impact on Encryptable**
 - **AES-256:** Grover's algorithm reduces brute-force effort to 2^128, which is still infeasible for any foreseeable quantum computer.
-- **HKDF/HMAC-SHA256/512:** Preimage resistance is halved, but with enforced secret lengths (256 bits for @HKDFId, 128 bits for @Id), effective security remains strong (128 bits for SHA-256, 256 bits for SHA-512).
-- **@HKDFId secrets:** 256 bits (32 chars) → 128 bits quantum security (still strong)
+- **HKDF/HMAC-SHA256/512:** Preimage resistance is halved, but with enforced secret lengths (288 bits for @HKDFId, 128 bits for @Id), effective security remains strong (144 bits for SHA-256, 256 bits for SHA-512).
+- **@HKDFId secrets:** 288 bits (48 chars) → 144 bits quantum security (still strong)
 - **@Id CIDs:** 128 bits (22 chars) → 128 bits collision resistance (quantum computers do not reduce collision resistance; relevant only for addressing, not for secrets)
 - **No asymmetric crypto:** Shor’s algorithm does not apply.
 
@@ -373,7 +401,7 @@ Encryptable uses only symmetric cryptography (AES-256-GCM) and hash-based key de
 | AES-256         | 256 bits         | 128 bits         | ✅ Still secure                                        |
 | SHA-256 (HKDF)  | 256 bits (preimage) | 128 bits          | ✅ Still secure for KDF usage |
 | SHA-512 (HKDF)  | 512 bits (preimage) | 256 bits         | ✅ Still secure                                        |
-| @HKDFId secrets | 256 bits         | 128 bits         | ✅ Still secure                                        |
+| @HKDFId secrets | 288 bits         | 144 bits         | ✅ Still secure                                        |
 | @Id CIDs (not a secret) | 128 bits (collision resistance) | 128 bits (collision resistance; quantum computers do not reduce collision resistance) | 🟢 Not used for secrets; only relevant for addressing/collision resistance |
 
 **Clarification on Quantum Attacks and Targeting:**
@@ -383,11 +411,11 @@ A quantum computer using Grover’s algorithm can quadratically speed up brute-f
 - The attacker cannot enumerate or identify valid entries, because CIDs are derived from secrets and are not guessable or enumerable.
 - There is no “index” or “directory” of users or entries to target.
 - The only way to attempt a targeted attack is to try every possible secret, derive the corresponding CID, and check if it matches any entry in the database.
-- This is equivalent to a global brute-force attack: the attacker must try 2^256 possible secrets for every possible entry, without knowing which CIDs are valid. In this context, Grover’s algorithm does not provide a practical advantage, as the attacker does not know which entry to target.
+- This is equivalent to a global brute-force attack: the attacker must try 2^288 possible secrets for every possible entry, without knowing which CIDs are valid. In this context, Grover's algorithm does not provide a practical advantage, as the attacker does not know which entry to target.
 
 **Additional Note on Quantum Attacks and Database Size:**
 
-Since the attacker does not know which entry is which, they could attempt to "crack" every entry using Grover's algorithm. However, the quadratic speedup applies only per entry, not globally. The total effort required still scales linearly with the number of entries in the database. For a database with N entries, the attacker would need to perform approximately N × 2^128 Grover iterations (assuming 256-bit secrets), which remains infeasible for any realistic database size and quantum computer. This further reinforces Encryptable's strong quantum resistance, even as the database grows.
+Since the attacker does not know which entry is which, they could attempt to "crack" every entry using Grover's algorithm. However, the quadratic speedup applies only per entry, not globally. The total effort required still scales linearly with the number of entries in the database. For a database with N entries, the attacker would need to perform approximately N × 2^144 Grover iterations (assuming 288-bit secrets), which remains infeasible for any realistic database size and quantum computer. This further reinforces Encryptable's strong quantum resistance, even as the database grows.
 
 **Conclusion**
 - In Encryptable, quantum computers do not provide a practical advantage for global brute-force attacks due to per-entry cryptographic isolation and the absence of user enumeration. Grover’s algorithm only provides a quadratic speedup for targeted attacks, which are infeasible because the attacker cannot identify or enumerate valid entries.
@@ -508,6 +536,8 @@ The framework provides two ID types with **different security properties:**
    - ✅ **Now supports `@Encrypt` using the master secret** (previously unsupported)
    - Encryption keys derived from the **master secret**, not the entity's ID
    - ⚠️ **Requires master secret to be configured** (`encryptable.master.secret`)
+   - ⚠️ **Master secret must be at least 74 characters** with sufficient entropy (≥3.5 bits/char)
+   - ✅ **Audit logging:** Logs a warning when master secret update is attempted, info when successfully set (no secret material logged)
 
 **Historical Note:** Prior to version 1.0.4, `@Encrypt` was not supported for `@Id` entities because there was no master secret mechanism. The framework blocked this combination to prevent a false sense of security. With the introduction of the master secret feature, `@Id` entities can now use `@Encrypt` safely, as encryption keys are derived from the master secret rather than the non-secret ID.
 
@@ -546,7 +576,7 @@ See [Limitations - Master Secret Rotation](LIMITATIONS.md#-master-secret-rotatio
 
 **Security Level:**
 - ✅ **Excellent** with high-entropy secrets (50+ characters)
-- 🟢 **Good** with framework minimum (32+ characters)
+- 🟢 **Good** with framework minimum (48+ characters)
 - 🔴 **Vulnerable** with low-entropy secrets (application must enforce strong secrets)
 
 ---
@@ -577,11 +607,11 @@ Encryptable's memory clearing strategy is the most effective and auditable appro
 | Database breach | AES-256-GCM field encryption | ✅ Excellent |
 | Secret database leaks | No secrets stored (passwords, 2FA, keys) | ✅ Complete |
 | Insider threats | Request-scoped knowledge architecture | ✅ Excellent |
-| Timing attacks | 2^256 search space | ✅ Excellent |
+| Timing attacks | 2^288 search space | ✅ Excellent |
 | Rainbow tables | HKDF + unique keys | ✅ Excellent |
 | Chosen-plaintext/ciphertext | GCM authenticated encryption | ✅ Excellent |
 | IV reuse | Unique IV per operation | ✅ Excellent |
-| Weak secrets (<32 chars) | Framework enforces minimum | ✅ Excellent |
+| Weak secrets (<48 chars) | Framework enforces minimum | ✅ Excellent |
 
 ### Correctly Out of Scope (Application/Infrastructure)
 
@@ -738,7 +768,7 @@ Because the remaining PCI-DSS controls (network, monitoring, access, audit) are 
 ### 5.2 Application Requirements
 
 **Secret Strength 🟡 Application Should Encourage**
-- Framework enforces: ≥32 characters (built-in)
+- Framework enforces: ≥48 characters for @HKDFId (built-in)
 - Applications should encourage: ≥50 characters for maximum security
 - Consider: Password strength meters, reject common passwords
 
@@ -763,7 +793,7 @@ Because the remaining PCI-DSS controls (network, monitoring, access, audit) are 
 ### Framework Level
 - [x] Industry-standard algorithms (AES-256-GCM, HKDF, SHA-256)
 - [x] Proper IV generation (unique, random)
-- [x] Minimum secret length (32 characters = 256 bits for @HKDFId, 22 characters = 128 bits for @Id) with automatic entropy validation (≥3.5 bits/char, ≥25% unique chars)
+- [x] Minimum secret length (48 characters = 288 bits for @HKDFId, 22 characters = 128 bits for @Id, 74 characters for master secret = ≥259 bits entropy) with automatic entropy validation (≥3.5 bits/char, ≥25% unique chars)
 - [x] Secure failure handling
 - [x] No secrets in logs
 - [x] Required JVM arguments set (fail-fast if missing)
@@ -830,7 +860,7 @@ Encryptable is rated as **Excellent** for cryptographic security, architecture, 
 
 **Production Use:**
 - Ready for startups, SaaS, web apps, and internal tools with proper application-level controls (rate limiting, monitoring, TLS/HTTPS)
-- High-entropy secrets (50+ chars recommended, 32+ required)
+- High-entropy secrets (50+ chars recommended, 48+ required for @HKDFId)
 - Regulated industries (finance, healthcare, government) require a professional audit for compliance
 
 **Note:** The proactive memory wiping strategy significantly reduces the risk of accidental secret exposure in memory dumps or forensic analysis, raising the bar for privacy and auditability.

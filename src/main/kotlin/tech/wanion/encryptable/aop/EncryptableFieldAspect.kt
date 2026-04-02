@@ -12,6 +12,7 @@ import tech.wanion.encryptable.mongo.EncryptableMongoRepository
 import tech.wanion.encryptable.mongo.PartOf
 import tech.wanion.encryptable.util.extensions.asClass
 import tech.wanion.encryptable.util.extensions.readField
+import tech.wanion.encryptable.util.extensions.unreflect
 import java.lang.reflect.Field
 
 /**
@@ -24,6 +25,8 @@ import java.lang.reflect.Field
 class EncryptableFieldAspect {
     companion object {
         private const val INIT_METHOD_NAME = "<init>"
+
+        private val throwIfReadOnlyMethod = Encryptable::class.java.getDeclaredMethod("throwIfReadOnly").unreflect()
     }
 
     // Helper: Check if field is annotated with @PartOf
@@ -90,14 +93,17 @@ class EncryptableFieldAspect {
         // Skip constructor calls
         if (thirdStack.methodName == INIT_METHOD_NAME) return joinPoint.proceed()
 
-        val targetEncryptable = joinPoint.target as? Encryptable<*> ?: return joinPoint.proceed()
-        val field = Encryptable.getMetadataFor(targetEncryptable).encryptableFields[fieldName] ?: return joinPoint.proceed()
+        val encryptable = joinPoint.target as? Encryptable<*> ?: return joinPoint.proceed()
+        val field = Encryptable.getMetadataFor(encryptable).encryptableFields[fieldName] ?: return joinPoint.proceed()
         val fieldType = field.type
 
-        val encryptableFieldMap = targetEncryptable.readField<MutableMap<String, String>>("encryptableFieldMap")
-        val encryptableFieldTypeMap = targetEncryptable.readField<MutableMap<String, String>>("encryptableFieldTypeMap")
+        throwIfReadOnlyMethod.invoke(encryptable)
+        // encryptable.throwIfReadOnly()
 
-        var oldEntity = field.get(targetEncryptable) as Encryptable<*>? // Current value before setting new one
+        val encryptableFieldMap = encryptable.readField<MutableMap<String, String>>("encryptableFieldMap")
+        val encryptableFieldTypeMap = encryptable.readField<MutableMap<String, String>>("encryptableFieldTypeMap")
+
+        var oldEntity = field.get(encryptable) as Encryptable<*>? // Current value before setting new one
 
         // If oldEntity is null, try to fetch it using the secret from the map.
         if (oldEntity == null && encryptableFieldMap.contains(fieldName)) {

@@ -9,7 +9,7 @@ import kotlin.collections.plusAssign
 
 class CryptoPropertiesTest : BaseEncryptableTest() {
 
-    private val secret = "A".repeat(32) // Framework enforces 32+ for @HKDFId; use randomSecret() in real flows
+    private val secret = "A".repeat(48) // Framework enforces 48+ for @HKDFId; use randomSecret() in real flows
     private val source: Any = this::class.java // any stable context/class is fine
 
     @Test
@@ -91,7 +91,7 @@ class CryptoPropertiesTest : BaseEncryptableTest() {
     fun `AES-GCM decrypt with wrong secret returns still-encrypted payload`() {
         val plaintext = "wrong-secret case".toByteArray()
         val enc = AES256.encrypt(secret, source, plaintext)
-        val wrongSecret = "B".repeat(32) // valid length but not the same secret
+        val wrongSecret = "B".repeat(48) // valid length but not the same secret
 
         val decWithWrong = AES256.decrypt(wrongSecret, source, enc)
 
@@ -105,7 +105,7 @@ class CryptoPropertiesTest : BaseEncryptableTest() {
 
     @Test
     fun `HKDF determinism and namespacing`() {
-        val s1 = "Z".repeat(32)
+        val s1 = "Z".repeat(48)
         val c1 = this::class.java
         val c2 = String::class.java
 

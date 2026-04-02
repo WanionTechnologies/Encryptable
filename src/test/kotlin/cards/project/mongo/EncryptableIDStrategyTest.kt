@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.util.*
-import tech.wanion.encryptable.mongo.CID
+import tech.wanion.encryptable.CID
 
 /**
  * Tests for different ID strategies (@Id vs @HKDFId)

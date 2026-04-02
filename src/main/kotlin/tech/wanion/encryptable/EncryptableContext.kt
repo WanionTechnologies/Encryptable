@@ -12,8 +12,7 @@ import tech.wanion.encryptable.util.extensions.clear
 import tech.wanion.encryptable.util.extensions.ip
 import tech.wanion.encryptable.util.extensions.parallelFill
 import tech.wanion.encryptable.util.extensions.zerify
-import java.util.Collections
-import java.util.IdentityHashMap
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.spec.SecretKeySpec
 

@@ -2,8 +2,8 @@ package cards.project.storage
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import tech.wanion.encryptable.mongo.CID
-import tech.wanion.encryptable.mongo.CID.Companion.cid
+import tech.wanion.encryptable.CID
+import tech.wanion.encryptable.CID.Companion.cid
 import tech.wanion.encryptable.storage.IStorage
 import tech.wanion.encryptable.util.extensions.first4KBChecksum
 import java.util.concurrent.ConcurrentHashMap

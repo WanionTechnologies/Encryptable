@@ -1,4 +1,4 @@
-package tech.wanion.encryptable.mongo
+package tech.wanion.encryptable
 
 import org.bson.types.Binary
 import tech.wanion.encryptable.config.EncryptableConfig

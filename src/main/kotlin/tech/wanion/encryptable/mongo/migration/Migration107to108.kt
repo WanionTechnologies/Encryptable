@@ -6,10 +6,10 @@ import com.mongodb.client.MongoDatabase
 import org.bson.Document
 import org.bson.types.Binary
 import org.slf4j.LoggerFactory
-import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.EncryptableContext
 import tech.wanion.encryptable.MasterSecretHolder
 import tech.wanion.encryptable.mongo.Encrypt
+import tech.wanion.encryptable.mongo.Encryptable
 import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.AES256
 import tech.wanion.encryptable.util.Limited.parallelForEach
@@ -19,12 +19,12 @@ import tech.wanion.encryptable.util.extensions.metadata
 
 class Migration107to108 : Migration {
     /** Logger instance for logging migration progress and any issues encountered during the migration process. */
-    private val logger = LoggerFactory.getLogger(Migration107to108::class.java)
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
-    /** The source version for this migration, indicating that it will update the database from version 1.0.7 to 1.0.8. */
+    /** The source version for this migration */
     override fun fromVersion(): String = "1.0.7"
 
-    /** The target version for this migration, indicating that it will update the database from version 1.0.7 to 1.0.8. */
+    /** The target version for this migration */
     override fun toVersion(): String = "1.0.8"
 
     /**

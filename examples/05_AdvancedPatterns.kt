@@ -143,7 +143,7 @@ class AdvancedPatternsExample(
 
     /**
      * Generates a cryptographically secure secret with proper entropy
-     * Best practice: Use at least 256 bits (32 bytes) of entropy
+     * Best practice: Use at least 288 bits (36 bytes / 48 Base64 chars) of entropy
      */
     private fun generateSecret(): String = String.randomSecret()
 
@@ -164,9 +164,9 @@ class AdvancedPatternsExample(
 
         // Good: High-entropy random secret
         val randomSecret = generateSecureSecret()
-        println("Random secret (256-bit): ${randomSecret.take(20)}...")
+        println("Random secret (288-bit): ${randomSecret.take(20)}...")
         println("Length: ${randomSecret.length} characters")
-        println("Entropy: ~256 bits")
+        println("Entropy: ~288 bits")
 
         // Good for specific use cases: Derived from user password
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }

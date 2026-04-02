@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatusCode
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.util.FastByteArrayOutputStream
+import tech.wanion.encryptable.EncryptableContext
 import java.io.InputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Method
@@ -16,7 +17,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
-import tech.wanion.encryptable.EncryptableContext
 
 /**
  * Converts a Boolean to its integer representation (true = 1, false = 0).

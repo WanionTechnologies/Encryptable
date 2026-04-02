@@ -7,7 +7,6 @@ import tech.wanion.encryptable.util.extensions.clear
 import tech.wanion.encryptable.util.extensions.decode64
 import tech.wanion.encryptable.util.extensions.encode64
 import tech.wanion.encryptable.util.extensions.markForWiping
-import java.nio.ByteBuffer
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -36,11 +35,28 @@ import javax.crypto.spec.SecretKeySpec
  * - All cryptographic operations use SecureRandom for IV generation.
  * - Errors are logged for audit purposes but not re-thrown to prevent information leakage.
  * - The class is stateless and thread-safe.
+ * - Encrypted data format: [12-byte IV][ciphertext][16-byte authentication tag]
+ * - Minimum encrypted data size: 12 + 1 + 16 = 29 bytes (IV + 1 byte plaintext + tag)
+ *
+ * JCA Provider Strategy:
+ * - **No explicit provider is specified** — `Cipher.getInstance(AES_ALGORITHM_GCM)` lets the JVM select the best available provider.
+ * - This design enables hardware-accelerated cryptography when available:
+ *   - ARM Crypto Extensions (ARM Cortex-A57+, OCI Ampere, AWS Graviton instances)
+ *   - Intel AES-NI (modern x86/x64 processors)
+ *   - Other platform-specific accelerators
+ * - Frameworks should never force a specific provider, as this bypasses hardware optimizations and degrades performance.
  *
  * Security Considerations:
  * - This class is designed to minimize the exposure of sensitive data in memory.
  * - Secrets and decrypted data are marked for wiping using `markForWiping` to reduce the risk of memory scraping attacks.
  * - It is recommended to use high-entropy, unique secrets for each encryption operation.
+ * - GCM nonce (IV) reuse with the same key is cryptographically catastrophic; this implementation uses random IVs.
+ * - Decryption failures (authentication tag mismatch, invalid input) are handled silently and return the original ciphertext.
+ *
+ * Thread Safety:
+ * - This object is stateless and fully thread-safe.
+ * - `SecureRandom` instance is thread-safe for concurrent IV generation.
+ * - Each encryption operation generates a fresh IV, preventing nonce reuse across threads.
  */
 object AES256 {
     /** Logger instance for audit logging. */
@@ -156,6 +172,9 @@ object AES256 {
      * @return The combined byte array containing the IV and the ciphertext, or an empty array on failure.
      */
     fun encrypt(secret: String, source: Any, data: ByteArray): ByteArray {
+        // Validate input
+        require(secret.isNotBlank()) { "Secret cannot be blank" }
+        
         // Register for clearing to minimize memory exposure
         markForWiping(secret, data)
         val aesKey = generateAesKeyFromSecret(secret, source)
@@ -164,14 +183,14 @@ object AES256 {
         val gcmSpec = GCMParameterSpec(TAG_LENGTH_BYTES * 8, iv)
         try {
             cipher.init(Cipher.ENCRYPT_MODE, aesKey, gcmSpec)
-            val encryptedData = cipher.doFinal(data)
-            val byteBuffer = ByteBuffer.allocate(iv.size + encryptedData.size)
-            byteBuffer.put(iv)
-            byteBuffer.put(encryptedData)
-            return byteBuffer.array()
+            val encryptedData = ByteArray(data.size + GCM_OVERHEAD_BYTES)
+            // Prepend IV to the output array
+            System.arraycopy(iv, 0, encryptedData, 0, GCM_IV_LENGTH)
+            cipher.doFinal(data, 0, data.size, encryptedData, GCM_IV_LENGTH)
+            return encryptedData
         } catch (e: Exception) {
-            val src = sourceNameFor(source)
-            logger.error("Encryption failed - Source: $src, DataSize: ${data.size} bytes, Error: ${e.javaClass.simpleName}")
+            val sourceName = sourceNameFor(source)
+            logger.error("Encryption failed - Source: $sourceName, DataSize: ${data.size} bytes, Error: ${e.javaClass.simpleName}")
             if (source is Encryptable<*>)
                 Encryptable.setErrored(source)
             return ByteArray(0)
@@ -197,19 +216,22 @@ object AES256 {
      * @return The decrypted byte array, or the same `data` on failure.
      */
     fun decrypt(secret: String, source: Any, data: ByteArray): ByteArray {
+        // Validate input
+        require(secret.isNotBlank()) { "Secret cannot be blank" }
+        require(data.size > GCM_IV_LENGTH) { "Encrypted data too short (minimum ${GCM_IV_LENGTH + 1} bytes, got ${data.size})" }
+
         val aesKey = generateAesKeyFromSecret(secret, source)
         val iv = ByteArray(GCM_IV_LENGTH)
-        val byteBuffer = ByteBuffer.wrap(data)
-        byteBuffer.get(iv)
-        val encryptedData = ByteArray(byteBuffer.remaining())
-        byteBuffer.get(encryptedData)
+        // Extract IV from the beginning of the input data
+        System.arraycopy(data, 0, iv, 0, GCM_IV_LENGTH)
+        val dataLength = data.size - GCM_IV_LENGTH
         val gcmSpec = GCMParameterSpec(TAG_LENGTH_BYTES * 8, iv)
         val cipher = Cipher.getInstance(AES_ALGORITHM_GCM)
         try {
             cipher.init(Cipher.DECRYPT_MODE, aesKey, gcmSpec)
             val decryptedData: ByteArray
             try {
-                decryptedData = cipher.doFinal(encryptedData)
+                decryptedData = cipher.doFinal(data, GCM_IV_LENGTH, dataLength)
             } finally {
                 // `finally` runs on both success and failure.
                 // On failure (AEADBadTagException), `decryptedData` is never assigned —
@@ -223,8 +245,8 @@ object AES256 {
             markForWiping(decryptedData)
             return decryptedData
         } catch (e: Exception) {
-            val src = sourceNameFor(source)
-            logger.error("Decryption failed - Source: $src, DataSize: ${data.size} bytes, Error: ${e.javaClass.simpleName}")
+            val sourceName = sourceNameFor(source)
+            logger.error("Decryption failed - Source: $sourceName, DataSize: ${data.size} bytes, Error: ${e.javaClass.simpleName}")
             if (source is Encryptable<*>)
                 Encryptable.setErrored(source)
             return data

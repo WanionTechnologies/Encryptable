@@ -24,17 +24,17 @@ package tech.wanion.encryptable.storage
  * **Reference layout:**
  * The concatenated reference [ByteArray] stored in the entity document has the following layout:
  * ```
- * [0..3]                         → 4 bytes — original plaintext data length (Int, big-endian)
- * [4 .. 4+refLen-1]              → slice 0 reference
- * [4+refLen .. 4+2*refLen-1]     → slice 1 reference
+ * [0..7]                         → 8 bytes — original plaintext data length (Long, big-endian)
+ * [8 .. 8+refLen-1]              → slice 0 reference
+ * [8+refLen .. 8+2*refLen-1]     → slice 1 reference
  * ...
- * [4+(N-1)*refLen .. 4+N*refLen-1] → slice N-1 reference
+ * [8+(N-1)*refLen .. 8+N*refLen-1] → slice N-1 reference
  * ```
- * The 4-byte length header allows pre-allocating a [ByteArray] of the exact output size before
+ * The 8-byte length header allows pre-allocating a [ByteArray] of the exact output size before
  * fetching a single slice — enabling fully parallel fetch + decrypt with direct index placement,
  * and no intermediate buffers or reassembly step.
  *
- * Slice count: `(referenceBytes.size - 4) / storage.referenceLength`
+ * Slice count: `(referenceBytes.size - 8) / storage.referenceLength`
  *
  * **Recommended slice sizes:**
  * - Large media (video, audio): 4 MB — ~4ms decrypt time with AES-NI

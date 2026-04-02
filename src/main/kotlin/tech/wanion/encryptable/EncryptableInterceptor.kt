@@ -1,11 +1,11 @@
-package tech.wanion.encryptable.mongo
+package tech.wanion.encryptable
 
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.HandlerInterceptor
-import tech.wanion.encryptable.EncryptableContext
 import tech.wanion.encryptable.util.Limited.parallelForEach
+import tech.wanion.encryptable.util.extensions.unreflect
 
 /**
  * Interceptor for Encryptable entity repositories.
@@ -13,18 +13,20 @@ import tech.wanion.encryptable.util.Limited.parallelForEach
  */
 @Component
 class EncryptableInterceptor : HandlerInterceptor {
-    /**
-     * Cached companion object instance for reflection calls.
-     */
-    private val companionInstance by lazy {
-        EncryptableContext::class.java.getDeclaredField("Companion").get(null)
-    }
+    companion object {
+        /**
+         * Cached companion object instance for reflection calls.
+         */
+        private val companionInstance by lazy {
+            EncryptableContext::class.java.getDeclaredField("Companion").get(null)
+        }
 
-    /**
-     * Cached method reference to clear secret-related material.
-     */
-    private val wipeMarked by lazy {
-        companionInstance.javaClass.getDeclaredMethod("wipeMarked").apply { isAccessible = true }
+        /**
+         * Cached method reference to clear secret-related material.
+         */
+        private val wipeMarked by lazy {
+            companionInstance.javaClass.getDeclaredMethod("wipeMarked").unreflect()
+        }
     }
 
     /**

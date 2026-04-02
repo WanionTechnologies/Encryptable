@@ -2,6 +2,7 @@ package cards.project.mongo.entity
 
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.stereotype.Repository
+import tech.wanion.encryptable.CID
 import tech.wanion.encryptable.mongo.*
 
 @Document(collection = "test_profiles")
