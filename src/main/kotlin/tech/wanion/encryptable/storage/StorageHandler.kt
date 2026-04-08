@@ -59,7 +59,6 @@ class StorageHandler {
         val field = getField(encryptable, fieldName)
 
         if (field.isAnnotationPresent(Sliced::class.java)) {
-            validateSlicedAnnotation(field, encryptable)
             readFromSlices(encryptable, fieldName, field, storageFieldIdMap)
         } else {
             readFromStorage(encryptable, fieldName, field, storageFieldIdMap)
@@ -224,7 +223,6 @@ class StorageHandler {
         val storageFields = getStorageFields(encryptable)
         val storageFieldIdMap = getStorageFieldIdMap(encryptable)
         val slicedField = field.isAnnotationPresent(Sliced::class.java)
-        if (slicedField) validateSlicedAnnotation(field, encryptable)
 
         // Guard: if newBytes are the currently stored reference bytes for this field,
         // this is processFields(true) restoring the field to its reference state after
@@ -322,7 +320,6 @@ class StorageHandler {
             val storage = getStorageForField(field)
 
             val combinedReferenceBytes = if (field.isAnnotationPresent(Sliced::class.java)) {
-                validateSlicedAnnotation(field, encryptable)
                 val sizeMB = field.getAnnotation(Sliced::class.java).sizeMB
                 storeAsSlices(bytes, field, storage, sizeMB, encryptField, encryptable, metadata)
             } else {
@@ -363,26 +360,6 @@ class StorageHandler {
     }
 
     /**
-     * Validates that a [@Sliced] annotation on a field has a valid sizeMB parameter (between 1 and 32).
-     * Throws IllegalArgumentException if the value is out of range.
-     *
-     * @param field The field to validate
-     * @param encryptable The Encryptable instance (for error reporting)
-     * @throws IllegalArgumentException if sizeMB is not between 1 and 32
-     */
-    private fun validateSlicedAnnotation(field: Field, encryptable: Encryptable<*>) {
-        val slicedAnnotation = field.getAnnotation(Sliced::class.java) ?: return
-        val sizeMB = slicedAnnotation.sizeMB
-
-        if (sizeMB !in 1..32) {
-            throw IllegalArgumentException(
-                "Invalid @Sliced configuration on field '${field.name}' in ${encryptable::class.java.name}: " +
-                        "sizeMB must be between 1 and 32 MB, but got $sizeMB MB"
-            )
-        }
-    }
-
-    /**
      * Deletes all slices belonging to a [@Sliced] field from storage in parallel.
      * Parses the concatenated reference [ByteArray] and issues one delete per slice,
      * all concurrently via unlimited virtual threads (I/O-bound).
@@ -393,16 +370,13 @@ class StorageHandler {
      */
     private fun deleteSlices(field: Field, storage: IStorage<Any>, referenceBytes: ByteArray) {
         val refLen = storage.referenceLength
-        if (referenceBytes.size < 8 + refLen) return // malformed, nothing safe to delete
-        val refsBytes = referenceBytes.size - 8
-        if (refsBytes % refLen != 0) return // corrupted
-        val sliceCount = refsBytes / refLen
+        if (referenceBytes.size < 8 + refLen)
+            return // malformed, nothing safe to delete
 
-        (0 until sliceCount).parallelForEach(false) { i ->
-            val refBytes = referenceBytes.copyOfRange(8 + i * refLen, 8 + (i + 1) * refLen)
-            val reference = storage.createReference(refBytes) ?: return@parallelForEach
-            storage.delete(field.metadata, reference)
-        }
+        val sliceResult = SlicedResult(referenceBytes, field)
+
+        // Bulk delete
+        storage.deleteMany(field.metadata, storage.createReferences(sliceResult.slices))
     }
 
     /**
@@ -614,8 +588,6 @@ class StorageHandler {
 
         // Only proceed if the field is annotated with @Sliced
         if (!field.isAnnotationPresent(Sliced::class.java)) return null
-
-        validateSlicedAnnotation(field, encryptable)
 
         // First try to get the reference bytes from the field itself, as it may have been cached there by a previous read.
         val fieldData = field.get(encryptable) as? ByteArray ?: return null

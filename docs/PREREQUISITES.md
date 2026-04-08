@@ -62,7 +62,10 @@ dependencies {
     implementation("tech.wanion:encryptable-starter:1.2.0")
   
     // Encryptable Aspects
-    aspect("tech.wanion:encryptable:1.2.0")
+    aspect("tech.wanion:encryptable:1.2.1")
+```
+
+Ensure your `build.gradle.kts` has the AspectJ weaving plugin configured as shown above, and the `aspect` dependency is specified (not `implementation`).
     // Encryptable Aspects for Tests
     testAspect("tech.wanion:encryptable:1.2.0")
 }

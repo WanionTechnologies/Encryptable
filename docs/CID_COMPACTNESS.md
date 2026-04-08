@@ -42,6 +42,27 @@ It is designed as a modern, compact, and secure alternative to the traditional U
 
 ---
 
+## 🔍 CID String Representation (v1.1.0+)
+
+Starting with **Encryptable 1.1.0**, `CID.toString()` behavior has been enhanced for improved debugging in MongoDB Atlas and other tools:
+
+- **From 1.1.0 onwards:** `CID.toString()` renders as **standard Base64 with padding** (24 characters with `=` padding)
+  - **Why:** MongoDB Compass displays BSON Binary custom subtype `128` fields as standard Base64 with `=` padding. This default aligns the string representation in logs and application output with what developers see in MongoDB Compass, enabling direct copy-paste for convenient debugging.
+  - **Example:** `Ej5FZ-ibEtOkVkJmFBdAAA==` (24 characters with padding)
+
+- **Configuration:** The behavior can be controlled with the `encryptable.cid.base64` property:
+  - `true` (default, v1.1.0+): Standard Base64 with padding (24 characters) — MongoDB Compass format
+  - `false`: URL-safe Base64 without padding (22 characters) — native CID format, suitable for URLs, QR codes, and external APIs
+
+- **Flexibility:** The `String.cid` extension accepts 4 input formats for maximum flexibility:
+  - 22 characters: URL-safe Base64 (native format)
+  - 24 characters: Standard Base64 with padding (MongoDB Compass format)
+  - 32 characters: UUID hex without hyphens
+  - 36 characters: Standard UUID format with hyphens
+  - All formats are transparently converted to CID, enabling seamless round-tripping with `CID.toString()` output.
+
+---
+
 ## 🔄 Interoperability
 
 - **CID and UUID are both 128 bits:**

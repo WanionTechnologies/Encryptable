@@ -10,7 +10,7 @@ Encryptable is a security-first extension of Spring Data MongoDB that adds encry
 - **Automatic Change Detection & Efficient updates** – Only changed fields are sent to the database.
 - **Large file handling** – Store files up to 2GB without managing file I/O. Any field can act as a mirror for large files, with Encryptable automatically handling storage (using any pluggable backend—GridFS, S3, file system, etc.), encryption, and lazy loading. No backend-specific code required.
 
-All features work through simple annotations—no boilerplate, minimal configuration.
+All features work through simple annotations, no boilerplate, minimal configuration.
 No crypto expertise required.
 
 ```kotlin
@@ -110,7 +110,7 @@ This project is supported by these amazing sponsors:
 ## 👤 About the Author
 
 Encryptable was created by WanionCane, an independent developer with a passion for privacy, security, and innovative software design.\
-Prior to Encryptable, WanionCane authored several popular Minecraft mods—including UnIDict, Avaritiaddons, and Bigger Crafting Tables—which together have amassed over 100 million downloads on CurseForge.\
+Prior to Encryptable, WanionCane authored several popular Minecraft mods, including UnIDict, Avaritiaddons, and Bigger Crafting Tables, which together have amassed over 100 million downloads on CurseForge.\
 This project was built from the ground up, with AI assistance for documentation and repetitive tasks, to implement request-scoped (transient) knowledge architecture and ORM-like features to the Java and Kotlin ecosystem.
 
 ---

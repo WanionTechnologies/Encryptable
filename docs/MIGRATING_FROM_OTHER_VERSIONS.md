@@ -127,13 +127,13 @@ is no automated or manual migration that can convert existing data to the new sc
 
 **Step 1 — Back up your database**
 ```bash
-mongodump --out ./backup-before-1.2.0
+mongodump --out ./backup-before-1.2.0-migration
 ```
 
 **Step 2 — Update the dependency**
 ```kotlin
 // build.gradle.kts
-implementation("tech.wanion:encryptable-starter:1.2.0")
+implementation("tech.wanion:encryptable-starter:1.2.1")
 ```
 
 **Step 3 — Enable migration mode and start the application once**
@@ -159,6 +159,7 @@ Load a few entities with `@Sliced` fields and confirm they are accessible and co
 #### Impact if not migrated
 
 - Applications reading `@Sliced` fields from databases created with Encryptable 1.1.0 or earlier **must** run the migration before upgrading to 1.2.0. Failure to migrate will result in deserialization errors or incorrect file sizes for affected fields.
+- 1.2.1 maintains full compatibility with the 1.2.0 data format — no additional migration required for 1.2.0 → 1.2.1 upgrades.
 
 #### Reference
 - See the [Changelog](../CHANGELOG.md#111---2026-03-28) for a summary of changes.

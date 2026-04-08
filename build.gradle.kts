@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "tech.wanion"
-version = "1.2.0"
+version = "1.2.1"
 description = "Encryptable is a Transient-Knowledge ORM-like Framework for Spring Data MongoDB. Providing secure, anonymous, and compliant data protection with minimal developer effort."
 
 // Version variables from gradle.properties

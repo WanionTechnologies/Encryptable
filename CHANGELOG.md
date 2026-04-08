@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.0.9** (2026-03-07) - Minor Fix: Nested Entity IDs Incorrectly Encrypted on `@Id` Parents & Major Test Expansion
 - **1.1.0** (2026-03-19) - ⛔ Incompatible with 1.0.x: BSON Binary subtype `0x04`→custom subtype `128` (user-defined), HKDF context key derivation fix & storage threshold minimum lowered to 1KB (default remains 16KB). No migration path — fresh database required.
 - **1.2.0** (2026-04-02) - 🔐 Enhanced Security: Master Secret Validation (74 chars), @HKDFId Secrets (48 chars), Read-Only Entity Protection, @Sliced Reference Header (8-byte Size Prefix).
+- **1.2.1** (2026-04-07) - 🔄 Patch Release: Stability, Documentation Improvements, No Breaking Changes.
 
 ---
 ## [1.0.0] - 2025-12-12 (Initial Release)
@@ -516,6 +517,38 @@ This release significantly strengthens cryptographic entropy enforcement for bot
   MasterSecretHolder.rotateMasterSecret(oldSecret, newSecret)
   // On success, the new master secret is active; new @Id entities will use it.
   ```
+
+---
+
+## [1.2.1] - 2026-04-07
+
+### 🔄 Patch Release: Stability & Documentation
+
+This patch release maintains full backward compatibility with 1.2.0 while introducing stability improvements and enhanced documentation.
+
+#### ✅ No Breaking Changes
+
+- **Fully backward compatible** with 1.2.0 — no data format changes, no API modifications
+- **No migration required** — simply upgrade and continue using Encryptable as before
+- **Drop-in replacement** for 1.2.0 dependencies
+
+#### 🔧 Bug Fixes
+
+- **Fixed GridFS-backed field cascade deletion** - Previously a boundary condition in cascade delete logic (changed `<=` to `<`) was preventing GridFS-backed `ByteArray` fields from being properly deleted during cascade operations on parent entities.
+- **Improved cascade delete ordering** - Entity deletion now occurs **only after cascade delete completes**. This ensures all child entities, nested references, and storage resources are properly cleaned up before the parent entity is removed from the database, preventing orphaned data and maintaining referential integrity.
+
+#### ⚡ Performance Improvements
+
+- **Optimized @Sliced annotation validation** - Moved validation of `@Sliced` annotations on `ByteArray` fields from every read/write operation to encryptable metadata initialization. This eliminates repeated validation overhead and improves performance for entities with sliced storage fields, especially for frequently accessed or large batch operations.
+- **Batch deletion of storage-backed fields** - When cascade-deleting multiple entities (e.g., `deleteBySecrets`), storage references (GridFS ObjectIds, S3 CIDs, etc.) are now collected across all entities in parallel and issued as a single `deleteMany` call per field, rather than one delete call per entity per field. For `@Sliced` fields, all individual slice references across all entities are batched into a single bulk delete. This reduces the number of round-trips to the storage backend from O(entities × fields) to O(distinct fields), providing significant performance gains on large batch deletes.
+- **`GridFSStorage.deleteMany` override** - `GridFSStorage` now overrides `deleteMany` to issue a single `{ _id: { $in: [...] } }` query to MongoDB instead of one delete operation per reference. This eliminates all per-file network round-trips and provides maximum performance for batch GridFS deletions, regardless of the batch size.
+
+#### 📋 Dependency Versions
+
+- **Kotlin:** 2.2.21
+- **Spring Boot:** 4.0.5
+- **AspectJ:** 1.9.22
+- **Java:** 21+
 
 ---
 

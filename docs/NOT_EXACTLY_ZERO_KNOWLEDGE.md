@@ -2,7 +2,7 @@
 
 Encryptable implements a dual-scope security model:
 
-- **True zero-knowledge outside of requests:** The server never stores, reconstructs, or persists user secrets. All cryptographic material is wiped from memory after each request, and the server cannot access or recover user data without the secret.
+- **True zero-knowledge outside of requests:** The server never persists user secrets. All cryptographic material is wiped from memory after each request, and the server cannot access or recover user data without the secret.
 - **Transient knowledge during requests:** For the duration of a request, Encryptable temporarily holds the secret in memory to perform cryptographic operations (encryption, decryption, etc.) on behalf of the user. Once the request completes, all secrets are securely wiped from memory, restoring the zero-knowledge state.
 
 This approach ensures:

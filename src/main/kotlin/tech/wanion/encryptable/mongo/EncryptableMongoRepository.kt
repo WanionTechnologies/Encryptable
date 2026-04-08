@@ -179,8 +179,10 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
      * ### Parameters
      * - `secret`: The secret string.
      * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
+     * - `cascadeDelete`: If true, means that the deletion of the given entity should Cascade to its associated resources (GridFS files, child entities, etc.) to prevent orphaned data.
+     *                    If false, only the entity itself is deleted, and associated resources are left intact (use with caution to avoid orphaned data), or build your own orphan cleaning strategy.
      */
-    fun deleteBySecret(secret: String, secretAsId: Boolean = false)
+    fun deleteBySecret(secret: String, secretAsId: Boolean = false, cascadeDelete: Boolean = true)
 
     /**
      * # deleteBySecrets
@@ -190,8 +192,10 @@ interface EncryptableMongoRepository<T: Encryptable<T>> : MongoRepository<T, CID
      * ### Parameters
      * - `secrets`: Iterable of secret strings.
      * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
+     * - `cascadeDelete`: If true, means that the deletion of the given entity should Cascade to its associated resources (GridFS files, child entities, etc.) to prevent orphaned data.
+     *                    If false, only the entity itself is deleted, and associated resources are left intact (use with caution to avoid orphaned data), or build your own orphan cleaning strategy.
      */
-    fun deleteBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false)
+    fun deleteBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean = false, cascadeDelete: Boolean = true)
 
     /**
      * # markForCleanup

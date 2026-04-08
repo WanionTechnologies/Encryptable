@@ -26,10 +26,15 @@ import tech.wanion.encryptable.CID.Companion.binary
 import tech.wanion.encryptable.CID.Companion.cid
 import tech.wanion.encryptable.EncryptableContext
 import tech.wanion.encryptable.config.EncryptableConfig
+import tech.wanion.encryptable.storage.Sliced
+import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.Limited.parallelForEach
+import tech.wanion.encryptable.util.extensions.getBean
 import tech.wanion.encryptable.util.extensions.markForWiping
+import tech.wanion.encryptable.util.extensions.metadata
 import tech.wanion.encryptable.util.extensions.readField
 import tech.wanion.encryptable.util.extensions.unreflect
+import java.lang.reflect.Field
 import java.time.Duration
 import java.time.Instant
 import java.util.*
@@ -794,7 +799,9 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
         val missingCidsByType = integrityCheckMethod.invoke(entity) as Map<Class<out Encryptable<*>>, Set<String>>
         // Log any missing references found during integrity check
         missingCidsByType.forEach { (type, missingCids) ->
-            logger.warn(" - Missing references of type ${type.simpleName}: $missingCids")
+            // To correctly display CIDs to their toString() representation..
+            val cids = missingCids.map { it.cid.toString() }
+            logger.warn("Missing references of type ${type.simpleName}: $cids")
         }
     }
 
@@ -882,19 +889,24 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * ## Parameters
      * - `secret`: The secret string of the entity to delete.
      * - `secretAsId`: If true, allows lookup using the Secret as if it is a representation of CID. (like in @Id strategy).
+     * * - `cascadeDelete`: If true, means that the deletion of the given entity should Cascade to its associated resources (GridFS files, child entities, etc.) to prevent orphaned data.
+     *                     If false, only the entity itself is deleted, and associated resources are left intact (use with caution to avoid orphaned data), or build your own orphan cleaning strategy.
      *
      * ## Throws
      * - Any exception encountered during deletion, which will cause the transaction to roll back.
      * - **Only applicable if current MongoDb setup supports transactions.**
      */
-    @Transactional
-    override fun deleteBySecret(secret: String, secretAsId: Boolean) {
+     @Transactional
+     override fun deleteBySecret(secret: String, secretAsId: Boolean, cascadeDelete: Boolean) {
         // secret should be cleared at the end of the request to limit exposure in memory.
         // findBySecret already marks it, so no need to do it again here.
         val encryptable = findBySecretOrNull(secret, secretAsId) ?: return
+        if (cascadeDelete) {
+            deleteStorageReferences(encryptable)
+            cascadeDeleteMethod.invoke(encryptable)
+        }
         val query = Query(Criteria.where(entityInformation.idAttribute).`is`(encryptable.id))
         mongoOperations.remove(query, entityInformation.javaType)
-        cascadeDeleteMethod.invoke(encryptable)
         removeEntityInfo(encryptable.id!!)
     }
 
@@ -906,13 +918,15 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * ## Parameters
      * - `secrets`: Iterable of secret strings of the entities to delete.
      * - `secretsAsIds`: If true, allows lookup using the Secrets as if they are representations of CIDs. (like in @Id strategy).
-     *
+     * - `cascadeDelete`: If true, means that the deletion of the given entity should Cascade to its associated resources (GridFS files, child entities, etc.) to prevent orphaned data.
+     *                    If false, only the entity itself is deleted, and associated resources are left intact (use with caution to avoid orphaned data), or build your own orphan cleaning strategy.
+
      * ## Throws
      * - Any exception encountered during deletion, which will cause the transaction to roll back.
      * - **Only applicable if current MongoDb setup supports transactions.**
      */
     @Transactional
-    override fun deleteBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean) {
+    override fun deleteBySecrets(secrets: Iterable<String>, secretsAsIds: Boolean, cascadeDelete: Boolean) {
         // Process secrets in batches to avoid OOM
         val batchSize = 500
         val secretList = secrets.toList()
@@ -923,13 +937,145 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             val encryptables = findBySecrets(batch, secretsAsIds)
             if (encryptables.isEmpty()) return@forEach
             val cids = encryptables.map { it.id }
-            val query = Query(Criteria.where(entityInformation.idAttribute).`in`(cids))
-            mongoOperations.remove(query, entityInformation.javaType)
+            if (cascadeDelete)
+                deleteStorageReferences(encryptables)
             encryptables.parallelForEach(false) { encryptable ->
-                cascadeDeleteMethod.invoke(encryptable)
+                if (cascadeDelete)
+                    cascadeDeleteMethod.invoke(encryptable)
                 removeEntityInfo(encryptable.id!!)
             }
+            val query = Query(Criteria.where(entityInformation.idAttribute).`in`(cids))
+            mongoOperations.remove(query, entityInformation.javaType)
         }
+    }
+
+    /**
+     * # deleteStorageReferences (single entity)
+     *
+     * Convenience overload to delete all storage backend files (GridFS, S3, etc.) associated with a single Encryptable entity.
+     *
+     * Internally delegates to `deleteStorageReferences(List<Encryptable<T>>)` for code reuse.
+     *
+     * **Note:** This only deletes the raw storage files (GridFS documents, S3 objects, etc.).
+     * It does NOT delete child Encryptable entities or the parent entity document itself — call
+     * `cascadeDeleteMethod` and `mongoOperations.remove(...)` separately for those.
+     *
+     * @param encryptable The single Encryptable entity whose storage files should be deleted.
+     */
+    private fun deleteStorageReferences(encryptable: Encryptable<T>) = deleteStorageReferences(listOf(encryptable))
+
+    /**
+     * # deleteStorageReferences (batch)
+     *
+     * Deletes all storage backend files (GridFS, S3, etc.) associated with a batch of Encryptable entities,
+     * performing bulk deletions per field across all entities in parallel.
+     *
+     * ## How It Works
+     *
+     * 1. Calls `extractStorageReferencesFromEncryptables` to collect all storage references grouped by field.
+     * 2. For each field, resolves the appropriate `IStorage` implementation via `storageHandler.getStorageForField`.
+     * 3. Converts raw reference `ByteArray`s to typed references via `storage.createReferences`.
+     * 4. Issues a single `storage.deleteMany` call per field — maximally efficient bulk deletion.
+     * 5. All fields are processed in parallel using `parallelForEach` (virtual threads, I/O-bound).
+     *
+     * ## Scope
+     *
+     * This method covers **storage files only** (the binary blobs stored in GridFS/S3/custom backends).
+     * It does **not**:
+     * - Delete child Encryptable entities (`@PartOf` relationships) — use `cascadeDeleteMethod` for that.
+     * - Delete the parent entity document from MongoDB — use `mongoOperations.remove(...)` for that.
+     *
+     * ## Performance
+     * - One `deleteMany` call per distinct field across the entire batch — avoids N×M individual delete calls.
+     * - All field deletions run in parallel (I/O-bound virtual threads).
+     * - No-op if no entities have any storage fields.
+     *
+     * ## Parameters
+     * - `encryptables`: The list of Encryptable entities whose storage files should be deleted.
+     */
+    private fun deleteStorageReferences(encryptables: List<Encryptable<T>>) {
+        val storageHandler = getBean(StorageHandler::class.java)
+        val fieldToReferences = extractStorageReferencesFromEncryptables(encryptables)
+        fieldToReferences.parallelForEach { (field, referencesBytes) ->
+            val storage = storageHandler.getStorageForField(field)
+            val references = storage.createReferences(referencesBytes)
+            storage.deleteMany(field.metadata, references)
+        }
+    }
+
+    /**
+     * # extractStorageReferencesFromEncryptables
+     *
+     * Extracts all storage references (GridFS ObjectIds, S3 CIDs, etc.) from a batch of Encryptable entities in parallel.
+     *
+     * This method efficiently collects all storage references (like GridFS ObjectIds or S3 CIDs) from ByteArray fields across multiple entities.
+     * It handles both regular storage fields and @Sliced fields, collecting individual slice references automatically.
+     *
+     * ## How It Works
+     *
+     * 1. **Pre-population:** Creates a map with all ByteArray fields as keys and empty synchronized lists as values.
+     *    This avoids `ConcurrentModificationException` during the parallel loop — only the inner lists grow, never the outer map.
+     * 2. **Parallel iteration:** Processes each entity in parallel using `parallelForEach` (virtual threads, I/O-bound).
+     * 3. **Field inspection:** For each field in the entity's `storageFields` list:
+     *    - **@Sliced fields:** Calls `storageHandler.getSlices()` to retrieve all individual slice references and adds them to the list.
+     *    - **Regular fields:** Calls `storageHandler.getReferenceBytes()` to retrieve the single reference and adds it to the list.
+     * 4. **Filtering:** Returns only fields that have at least one reference, keeping output compact.
+     *
+     * ## Parameters
+     * - `encryptables`: A list of Encryptable entities to extract storage references from (may be empty).
+     *
+     * ## Returns
+     * - A map from Field (reflected ByteArray fields) to their storage references.
+     * - For @Sliced fields, includes all individual slice references as separate ByteArray entries in the list.
+     * - For regular storage fields, includes a single ByteArray reference in the list.
+     * - Empty map if no entities have storage fields or if `byteArrayFields` is empty.
+     *
+     * ## Performance
+     * - **Parallel processing:** O(n) where n = total number of storage fields across all entities.
+     * - **Memory-safe:** Pre-populated map avoids concurrent mutation of the outer structure.
+     * - **Lazy reference extraction:** Only calls `getSlices`/`getReferenceBytes` for fields marked in `storageFields`, skipping inline fields.
+     *
+     * ## Use Cases
+     * - Building a deletion list for bulk cascade delete of associated storage files.
+     * - Extracting storage metadata for audit trails or analytics before cleanup.
+     * - Validating storage reference integrity across a batch of entities.
+     *
+     * ## Note
+     * - This method is private — it's intended for internal repository cascade delete and rotation logic.
+     * - References returned are raw ByteArray blobs (ObjectIds, CIDs, etc.), ready for `IStorage.createReference()` or `deleteMany()`.
+     *
+     * @param encryptables The list of Encryptable entities to process.
+     * @return Map of Field → List of storage reference ByteArrays (per-slice or single reference).
+     */
+    private fun extractStorageReferencesFromEncryptables(encryptables: List<Encryptable<T>>): Map<Field, List<ByteArray>> {
+        val byteArrayFields = metadata.byteArrayFields
+        // in case there is no byteArrayFields.
+        if (byteArrayFields.isEmpty())
+            return emptyMap()
+        val storageHandler = getBean(StorageHandler::class.java)
+        // Pre-populate with synchronized lists — keys are fixed, so the outer map is never mutated during parallel iteration.
+        val fieldToReferencesMap: Map<Field, MutableList<ByteArray>> = byteArrayFields.values
+            .associateWith { synchronizedList(mutableListOf()) }
+        encryptables.parallelForEach { encryptable ->
+            val storageFields = encryptable.readField("storageFields") as List<String>?
+            if (storageFields.isNullOrEmpty())
+                return@parallelForEach
+            storageFields.forEach { fieldName ->
+                val field = byteArrayFields[fieldName] ?: return@forEach
+                val referenceList = fieldToReferencesMap[field] ?: return@forEach
+                if (field.isAnnotationPresent(Sliced::class.java)) {
+                    // For sliced fields, collect all individual slice references.
+                    val slicedResult = storageHandler.getSlices(encryptable, fieldName) ?: return@forEach
+                    referenceList.addAll(slicedResult.slices)
+                } else {
+                    // For regular fields, collect the single storage reference.
+                    val referenceBytes = storageHandler.getReferenceBytes(encryptable, fieldName) ?: return@forEach
+                    referenceList.add(referenceBytes)
+                }
+            }
+        }
+        // Return only fields that actually have references.
+        return fieldToReferencesMap.filterValues { it.isNotEmpty() }
     }
 
     /**

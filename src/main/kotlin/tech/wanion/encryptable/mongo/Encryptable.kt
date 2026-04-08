@@ -10,6 +10,7 @@ import tech.wanion.encryptable.MasterSecretHolder
 import tech.wanion.encryptable.config.EncryptableConfig
 import tech.wanion.encryptable.mongo.Encryptable.Companion.getSecretOf
 import tech.wanion.encryptable.mongo.Encryptable.Companion.getUnsafeSecretOf
+import tech.wanion.encryptable.storage.Sliced
 import tech.wanion.encryptable.storage.StorageHandler
 import tech.wanion.encryptable.util.AES256
 import tech.wanion.encryptable.util.HKDF
@@ -899,13 +900,14 @@ abstract class Encryptable<T: Encryptable<T>> {
      * - Uses parallel processing as it is IO-bound operations (database deletions).
      */
     private fun cascadeDelete() {
-        populateStorageFieldIdMap()
-        val storageHandler = getBean(StorageHandler::class.java)
         // Storage references are stored on field.
         // we can't access the content without the secret, but we can delete the files.
+        // previously handled here, but for batch deleting reasons, now it is done at repository level.
+        /*
         storageFieldIdMap.keys.parallelForEach { fieldName ->
             storageHandler.delete(this, fieldName)
         }
+         */
         // if we got here, means that the secret isn't null and all the fields are decrypted.
         // Delete all entities referenced in encryptableFieldMap, only if field is annotated with @PartOf
         encryptableFieldMap.parallelForEach { (fieldName, secret) ->
@@ -959,17 +961,6 @@ abstract class Encryptable<T: Encryptable<T>> {
             true
         } catch (_: Exception) {
             false
-        }
-    }
-
-    /**
-     * Populates the `storageFieldIdMap` with field names and their corresponding storage references (byte arrays) for all fields of type ByteArray that are stored in the storage backend.
-     */
-    private fun populateStorageFieldIdMap() {
-        metadata.byteArrayFields.entries.parallelForEach { (fieldName, field) ->
-            val bytes = field.get(this) as ByteArray?
-            if (bytes == null || bytes.size <= 12) return@parallelForEach // Not a Storage reference or was already loaded.
-            storageFieldIdMap[fieldName] = bytes
         }
     }
 
@@ -1158,6 +1149,30 @@ abstract class Encryptable<T: Encryptable<T>> {
             // if master secret is not set, the method `masterSecretIsSet()` will throw IllegalStateException.
             this.encryptable =
                 this.strategies == Strategies.HKDFID || (encryptFields.isNotEmpty() && MasterSecretHolder.masterSecretIsSet())
+
+            // It is better to validate this at startup than every read/write of a sliced ByteArray field.
+            byteArrayFields.values.filter { it.isAnnotationPresent(Sliced::class.java) }.forEach {
+                validateSlicedAnnotation(it)
+            }
+        }
+
+        /**
+         * Validates a [@Sliced] annotation on a byteArrayField has a valid sizeMB parameter (between 1 and 32).
+         * Throws IllegalArgumentException if the value is out of range.
+         *
+         * @param byteArrayField The field to validate
+         * @throws IllegalArgumentException if sizeMB is not between 1 and 32
+         */
+        private fun validateSlicedAnnotation(byteArrayField: Field) {
+            val slicedAnnotation = byteArrayField.getAnnotation(Sliced::class.java) ?: return
+            val sizeMB = slicedAnnotation.sizeMB
+
+            if (sizeMB !in 1..32) {
+                throw IllegalArgumentException(
+                    "Invalid @Sliced configuration on field '${byteArrayField.name}' in ${byteArrayField.declaringClass.name}: " +
+                            "sizeMB must be between 1 and 32 MB, but got $sizeMB MB"
+                )
+            }
         }
 
         /**

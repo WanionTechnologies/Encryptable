@@ -4,12 +4,16 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Component
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.Delete
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
+import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import tech.wanion.encryptable.mongo.CID
 import tech.wanion.encryptable.mongo.CID.Companion.cid
 import tech.wanion.encryptable.storage.IStorage
+import tech.wanion.encryptable.util.Limited.parallelForEach
 import java.io.ByteArrayOutputStream
 
 /**
@@ -46,13 +50,10 @@ class S3StorageImpl : IStorage<CID> {
     private val metadataKeyRegex = Regex("(?<class>[^/]+)/(?<field>[^/]+)(?:/(?<key>.+))?")
 
     /** The fixed length of the byte array representation of a CID reference. */
-    override val referenceLength = 16
-
-     /** Replace with your bucket name or inject via @Value. */
-    val bucketName: String = "your-bucket-name"
-
-    /** The expected length of a CID reference in bytes, which is 16 bytes. */
     override val referenceLength: Int = 16
+
+    /** Replace with your bucket name or inject via @Value. */
+    val bucketName: String = "your-bucket-name"
 
     /** Creates a CID reference from the given byte array if it is 16 bytes long, otherwise returns null. */
     override fun createReference(referenceBytes: ByteArray?): CID? =
@@ -72,7 +73,7 @@ class S3StorageImpl : IStorage<CID> {
      */
     override fun create(fieldMetadata: String, bytesToStore: ByteArray): CID {
         val cid = CID.random()
-        val key = cid.toString()
+        val key = cid.toBase64Url()
         val putRequest = PutObjectRequest.builder()
             .bucket(bucketName)
             .key("$fieldMetadata/$key")
@@ -91,7 +92,7 @@ class S3StorageImpl : IStorage<CID> {
      * The S3 key is reconstructed as <fieldMetadata>/<key> for retrieval.
      */
     override fun read(fieldMetadata: String, reference: CID): ByteArray? {
-        val key = reference.toString()
+        val key = reference.toBase64Url()
         val getRequest = GetObjectRequest.builder()
             .bucket(bucketName)
             .key("$fieldMetadata/$key")
@@ -112,11 +113,53 @@ class S3StorageImpl : IStorage<CID> {
      * The S3 key is reconstructed as <fieldMetadata>/<key> for deletion.
      */
     override fun delete(fieldMetadata: String, reference: CID) {
-        val key = reference.toString()
+        val key = reference.toBase64Url()
         val deleteRequest = DeleteObjectRequest.builder()
             .bucket(bucketName)
             .key("$fieldMetadata/$key")
             .build()
         s3Client.deleteObject(deleteRequest)
+    }
+
+    /**
+     * Deletes multiple objects associated with the given CID references from S3 storage using S3's native batch delete API.
+     *
+     * S3's `DeleteObjects` API accepts a maximum of **1000 keys per request**. This method automatically
+     * chunks the references into batches of 1000, issuing one `DeleteObjects` call per chunk. For typical
+     * Encryptable use cases (even large batch deletes with many `@Sliced` fields), this keeps the total
+     * number of network round-trips to a minimum — O(references / 1000) instead of O(references).
+     * All chunks are issued in parallel (virtual threads), so even datasets exceeding 1000 references
+     * incur only a single network latency penalty regardless of how many chunks are needed.
+     *
+     * The `quiet(true)` flag suppresses per-object success responses from S3, reducing response payload size.
+     * Errors are still reported by S3 if any individual key fails to delete.
+     *
+     * @param fieldMetadata A string containing the fully qualified class name and field name, separated by a slash (e.g., "com.example.domain.UserEntity/profilePicture").
+     * @param references The list of CID references of the objects to delete.
+     *
+     * If the references list is empty, no action is taken.
+     */
+    override fun deleteMany(fieldMetadata: String, references: List<CID>) {
+        if (references.isEmpty()) return
+
+        // S3 DeleteObjects API hard limit: 1000 keys per request.
+        // Chunks are dispatched in parallel — all round-trips happen concurrently.
+        references.chunked(1000).parallelForEach { chunk ->
+            val objectIdentifiers = chunk.map { cid ->
+                ObjectIdentifier.builder()
+                    .key("$fieldMetadata/${cid.toBase64Url()}")
+                    .build()
+            }
+            val deleteRequest = DeleteObjectsRequest.builder()
+                .bucket(bucketName)
+                .delete(
+                    Delete.builder()
+                        .objects(objectIdentifiers)
+                        .quiet(true) // suppress per-object success responses; errors are still reported.
+                        .build()
+                )
+                .build()
+            s3Client.deleteObjects(deleteRequest)
+        }
     }
 }

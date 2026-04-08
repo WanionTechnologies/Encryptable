@@ -87,4 +87,19 @@ class GridFSStorage: IStorage<ObjectId> {
      */
     override fun delete(fieldMetadata: String, reference: ObjectId) =
         gridFsTemplate.delete(Query(Criteria.where("_id").`is`(reference)))
+
+    /**
+     * Deletes multiple GridFS entries in a single query using an `$in` filter.
+     *
+     * Unlike the default [IStorage.deleteMany] implementation (which issues one delete per reference in parallel),
+     * this override sends a single `{ _id: { $in: [...] } }` query to MongoDB, eliminating all per-file
+     * network round-trips and dramatically reducing latency for large batches.
+     *
+     * @param fieldMetadata The metadata string representing the field for which the data is being deleted.
+     * @param references The list of ObjectId references whose associated data is being deleted from GridFS.
+     */
+    override fun deleteMany(fieldMetadata: String, references: List<ObjectId>) {
+        if (references.isEmpty()) return
+        gridFsTemplate.delete(Query(Criteria.where("_id").`in`(references)))
+    }
 }
