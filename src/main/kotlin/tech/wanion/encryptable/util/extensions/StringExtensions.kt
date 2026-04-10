@@ -222,9 +222,6 @@ private val cachedStringHashIsZeroField: Field? by lazy {
  * If the internal hashIsZero field exists, sets it to true for consistency with JVM caching.
  */
 fun String.zerify() {
-    // if String is already all zeros, skip clearing
-    if (this.hashCode() == 0)
-        return
     try {
         // Overwrite internal value array
         when (val value = cachedStringValueField.get(this)) {
@@ -234,7 +231,7 @@ fun String.zerify() {
         }
         // Reset cached hash code
         cachedStringHashField.setInt(this, 0)
-        // Set hashIsZero to true if present
+        // Set hashIsZero to true if present — signals that 0 is the genuine hash, not an uncached value
         cachedStringHashIsZeroField?.setBoolean(this, true)
     } catch (e: Exception) {
         throw RuntimeException("Unable to clear String.value or String.hash/hashCode. If you see InaccessibleObjectException, add JVM arg: --add-opens java.base/java.lang=ALL-UNNAMED", e)

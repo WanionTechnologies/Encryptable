@@ -82,7 +82,7 @@ class StorageHandler {
     ) {
         val metadata = Encryptable.getMetadataFor(encryptable)
         try {
-            val referenceBytes = getReferenceBytes(encryptable, fieldName)
+            val referenceBytes = getReference(encryptable, fieldName)
                 ?: throw IllegalStateException("No reference bytes found for field '$fieldName' in ${encryptable::class.java.name}, unable to load from storage.")
 
             storageFieldIdMap[fieldName] = referenceBytes
@@ -243,7 +243,7 @@ class StorageHandler {
                 // For sliced fields the storageFieldIdMap holds the full concatenated reference.
                 oldReferenceBytes = storageFieldIdMap[fieldName]
             } else {
-                val refBytes = getReferenceBytes(encryptable, fieldName)
+                val refBytes = getReference(encryptable, fieldName)
                 oldSingleReference = fieldStorage.createReference(refBytes)
             }
 
@@ -353,7 +353,7 @@ class StorageHandler {
                 ?: return
             deleteSlices(field, storage, referenceBytes)
         } else {
-            val referenceBytes = getReferenceBytes(encryptable, fieldName) ?: return
+            val referenceBytes = getReference(encryptable, fieldName) ?: return
             val reference = storage.createReference(referenceBytes) ?: return
             storage.delete(field.metadata, reference)
         }
@@ -545,7 +545,7 @@ class StorageHandler {
      * @param fieldName The name of the field whose byte array reference is being retrieved.
      * @return The byte array reference associated with the specified field name, or null if no reference is found.
      */
-    fun getReferenceBytes(encryptable: Encryptable<*>, fieldName: String): ByteArray? {
+    fun getReference(encryptable: Encryptable<*>, fieldName: String): ByteArray? {
         val field = Encryptable.getMetadataFor(encryptable).byteArrayFields[fieldName] ?: return null
         val fieldData = field.get(encryptable) as? ByteArray ?: return null
         val storage = getStorageForField(field)

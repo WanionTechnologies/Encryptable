@@ -338,7 +338,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
         val storage = storageHandler.getStorageForField(TestUser::class.java, "encryptedBytes")
         val field = storageHandler.getField(TestUser::class.java, "encryptedBytes")
 
-        val referenceBytes = storageHandler.getReferenceBytes(entity, "encryptedBytes")
+        val referenceBytes = storageHandler.getReference(entity, "encryptedBytes")
         assertNotNull(referenceBytes, "Storage reference bytes must not be null for large field")
 
         val storageRef = storage.createReference(referenceBytes)
@@ -404,7 +404,7 @@ class EncryptableKeyCorrectnessTest : BaseEncryptableTest() {
         val storage = storageHandler.getStorageForField(TestIdEncryptEntity::class.java, "sensitiveBytes")
         val field = storageHandler.getField(TestIdEncryptEntity::class.java, "sensitiveBytes")
 
-        val referenceBytes = storageHandler.getReferenceBytes(entity, "sensitiveBytes")
+        val referenceBytes = storageHandler.getReference(entity, "sensitiveBytes")
         assertNotNull(referenceBytes, "Storage reference bytes must not be null for large field")
 
         val storageRef = storage.createReference(referenceBytes)

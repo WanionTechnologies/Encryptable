@@ -19,6 +19,7 @@ import tech.wanion.encryptable.util.extensions.markForWiping
 import tech.wanion.encryptable.util.extensions.metadata
 import java.lang.reflect.Field
 import java.nio.ByteBuffer
+import java.security.MessageDigest
 
 /**
  * Holds the master secret used for encryption and decryption.
@@ -56,7 +57,8 @@ object MasterSecretHolder {
     /** Logger instance for audit logging. */
     private val logger = LoggerFactory.getLogger(MasterSecretHolder::class.java)
 
-    /** Master secret used for encryption and decryption. */
+    /** Master secret used for encryption and decryption. Volatile for JVM memory visibility across threads. */
+    @Volatile
     private var masterSecret: String? = null
 
     init {
@@ -81,8 +83,10 @@ object MasterSecretHolder {
         val secretLength = secret.length
         require(secretLength > 73) { "Master Secret must be at least 74 characters to guarantee 256-bit entropy (got $secretLength characters)." }
         require(SecurityUtils.hasMinimumEntropy(secret)) { "Master Secret has insufficient entropy" }
-        
-        masterSecret = secret
+
+        // Store an isolated copy — the caller may have marked `secret` for wiping, which would
+        // zerify the stored value at request end (same bug as the rotation path, fixed here too).
+        masterSecret = secret.copy()
         logger.info("Master secret has been set and is ready for use.")
     }
 
@@ -155,7 +159,10 @@ object MasterSecretHolder {
     fun rotateMasterSecret(oldMasterSecret: String, newMasterSecret: String) {
         // Validate old secret matches current
         require(masterSecret != null) { "No master secret is currently set. Cannot rotate." }
-        require(masterSecret == oldMasterSecret) { "Old master secret does not match the current master secret." }
+        val matches = MessageDigest.isEqual(
+            masterSecret!!.toByteArray(), oldMasterSecret.toByteArray()
+        )
+        require(matches) { "Old master secret does not match the current master secret." }
 
         // Validate new secret
         val newLength = newMasterSecret.length
@@ -187,6 +194,10 @@ object MasterSecretHolder {
                     val doc = cursor.next()
                     var modified = false
 
+                    // Storage deletions are deferred until after the MongoDB document is successfully updated.
+                    // This prevents data loss: if replaceOne() fails, old storage objects are still intact.
+                    val pendingDeletions = mutableListOf<() -> Unit>()
+
                     // --- @Encrypt fields (String, List<String>, nested objects) ---
                     // encryptFields excludes ByteArray and Encryptable/List<Encryptable> fields.
                     metadata.encryptFields.forEach { (fieldName, field) ->
@@ -214,9 +225,9 @@ object MasterSecretHolder {
                         if (isStorageField) {
                             val storage = storageHandler.getStorageForField(field)
                             val newBytes = if (field.isAnnotationPresent(Sliced::class.java)) {
-                                rotateSlicedStorageField(field, storage, referenceOrData, oldMasterSecret, newMasterSecret, entityClass)
+                                rotateSlicedStorageField(field, storage, referenceOrData, oldMasterSecret, newMasterSecret, entityClass, pendingDeletions)
                             } else {
-                                rotateSingleStorageField(field, storage, referenceOrData, oldMasterSecret, newMasterSecret, entityClass)
+                                rotateSingleStorageField(field, storage, referenceOrData, oldMasterSecret, newMasterSecret, entityClass, pendingDeletions)
                             }
                             if (newBytes != null) {
                                 doc[fieldName] = Binary(newBytes)
@@ -234,6 +245,10 @@ object MasterSecretHolder {
 
                     if (modified) {
                         collection.replaceOne(Document("_id", doc["_id"]), doc)
+                        // MongoDB document is now safely updated — delete old storage objects.
+                        // If replaceOne() had thrown above, pendingDeletions would never run,
+                        // preserving old storage data and allowing safe retry.
+                        pendingDeletions.parallelForEach { it() }
                         logger.info("Rotated Master secret for document _id=${doc["_id"]} in '${collection.namespace.collectionName}'")
                     }
                 }
@@ -246,7 +261,10 @@ object MasterSecretHolder {
         }
 
         // All documents rotated successfully — update the master secret.
-        masterSecret = newMasterSecret
+        // A copy is made before assigning because newMasterSecret was already marked for wiping above.
+        // Assigning the same String object would cause masterSecret to be zerified at request end,
+        // silently destroying the just-rotated secret and breaking all subsequent operations.
+        masterSecret = newMasterSecret.copy()
         logger.info("Master Secret rotation completed successfully. Master secret has been updated.")
     }
 
@@ -306,8 +324,9 @@ object MasterSecretHolder {
     /**
      * Rotates a single (non-sliced) storage-backed `@Encrypt` ByteArray field.
      *
-     * Pattern: create new → update document → delete old (atomic replace).
+     * Pattern: create new → queue old for deletion (deletion happens only after MongoDB is updated).
      *
+     * @param pendingDeletions Accumulates deletion lambdas to run after the MongoDB document is safely updated.
      * @return The new reference bytes to store in the document, or `null` if rotation was not needed.
      */
     private fun rotateSingleStorageField(
@@ -316,7 +335,8 @@ object MasterSecretHolder {
         referenceBytes: ByteArray,
         oldSecret: String,
         newSecret: String,
-        entityClass: Class<out Encryptable<*>>
+        entityClass: Class<out Encryptable<*>>,
+        pendingDeletions: MutableList<() -> Unit>
     ): ByteArray? {
         val reference = storage.createReference(referenceBytes) ?: return null
         val rawBytes = storage.read(field.metadata, reference) ?: return null
@@ -327,8 +347,9 @@ object MasterSecretHolder {
         val reEncrypted = AES256.encrypt(newSecret, entityClass, decrypted)
         // Create new entry first — ensures data exists before old is deleted.
         val newReferenceBytes = storage.createWithBytesReference(field.metadata, reEncrypted)
-        // Delete old entry after new is safely stored.
-        storage.delete(field.metadata, reference)
+        // Queue old entry for deletion — executed only after replaceOne() succeeds.
+        // If the MongoDB write fails, old storage data remains intact for safe retry.
+        pendingDeletions.add { storage.delete(field.metadata, reference) }
         return newReferenceBytes
     }
 
@@ -336,10 +357,12 @@ object MasterSecretHolder {
      * Rotates a `@Sliced` storage-backed `@Encrypt` ByteArray field.
      *
      * Each slice is independently decrypted with the old secret and re-encrypted with the new secret.
-     * New slices are created first, then old slices are deleted (atomic replace per slice).
+     * New slices are created first, then old slices are queued for deletion (executed only after the MongoDB
+     * document is safely updated). This prevents data loss if the MongoDB write fails.
      *
      * Reference layout: `[8-byte originalLength][N × refLen-byte slice references]`
      *
+     * @param pendingDeletions Accumulates deletion lambdas to run after the MongoDB document is safely updated.
      * @return The new concatenated reference bytes, or `null` if rotation was not needed.
      */
     private fun rotateSlicedStorageField(
@@ -348,7 +371,8 @@ object MasterSecretHolder {
         referenceBytes: ByteArray,
         oldSecret: String,
         newSecret: String,
-        entityClass: Class<out Encryptable<*>>
+        entityClass: Class<out Encryptable<*>>,
+        pendingDeletions: MutableList<() -> Unit>
     ): ByteArray? {
         val refLen = storage.referenceLength
         if (referenceBytes.size < 8 + refLen) return null // Invalid if it doesn't contain one slice reference.
@@ -387,9 +411,10 @@ object MasterSecretHolder {
             refBytes.copyInto(result, destinationOffset = 8 + i * refLen)
         }
 
-        // Second pass: delete old slices — safe because new data is already stored.
+        // Second pass: queue old slices for deletion — executed only after replaceOne() succeeds.
+        // If the MongoDB write fails, old storage data remains intact for safe retry.
         oldReferences.forEach { ref ->
-            storage.delete(field.metadata, ref)
+            pendingDeletions.add { storage.delete(field.metadata, ref) }
         }
 
         return result

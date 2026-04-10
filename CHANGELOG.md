@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **1.1.0** (2026-03-19) - ⛔ Incompatible with 1.0.x: BSON Binary subtype `0x04`→custom subtype `128` (user-defined), HKDF context key derivation fix & storage threshold minimum lowered to 1KB (default remains 16KB). No migration path — fresh database required.
 - **1.2.0** (2026-04-02) - 🔐 Enhanced Security: Master Secret Validation (74 chars), @HKDFId Secrets (48 chars), Read-Only Entity Protection, @Sliced Reference Header (8-byte Size Prefix).
 - **1.2.1** (2026-04-07) - 🔄 Patch Release: Stability, Documentation Improvements, No Breaking Changes.
+- **1.2.2** (2026-04-09) - 🔒 Security Patch: Critical Rotation Fixes & Memory Hygiene.
 
 ---
 ## [1.0.0] - 2025-12-12 (Initial Release)
@@ -552,6 +553,69 @@ This patch release maintains full backward compatibility with 1.2.0 while introd
 
 ---
 
+## [1.2.2] - 2026-04-09
+
+### 🔒 Security Patch: Critical Rotation Fixes & Memory Hygiene
+
+This patch release addresses two critical bugs in master secret rotation, a memory-hygiene defect in secret wiping, and an edge case in storage field cleanup.
+
+#### ✅ No Breaking Changes
+
+- **Fully backward compatible** with 1.2.1 — no data format changes, minimal API modifications
+- **No migration required** — simply upgrade and continue using Encryptable as before
+- **Drop-in replacement** for 1.2.1 dependencies
+
+#### 🔧 API Refinement
+
+- **Renamed:** `getReferenceBytes` → `getReference` on `ResourceHandler` for clearer naming and consistency with storage abstraction terminology.
+- **Rationale:** While the method returns bytes, the naming aligns with the storage abstraction model where references are the primary concept. This improves API clarity and consistency with other storage methods like `getSlices()`, keeping the naming cleaner and more intuitive.
+
+#### 🐛 Bug Fix: Unsaved Entity Storage Cleanup
+
+- **Fixed:** Storage-backed `ByteArray` fields on unsaved entities are now properly deleted when an entity modification fails or is rolled back before the parent entity is saved.
+- **Scenario:** If an entity with storage-backed fields is modified but never successfully saved to the database (e.g., validation fails, exception occurs before `save()` completes), the framework now correctly cleans up any storage references that were created during field assignment, preventing orphaned storage data.
+- **Impact:** Eliminates potential storage leaks for applications that perform multiple entity save attempts or partial saves on the same entity instance.
+
+#### 🔒 Security Fix: Master Secret Comparison Now Constant-Time
+
+- **Fixed:** The `rotateMasterSecret()` validation compared the stored master secret against the caller-provided old secret using Kotlin's `==` operator, which performs a short-circuit string comparison — it returns `false` as soon as the first non-matching byte is found. This allows a timing side-channel: an attacker making repeated rotation calls with slightly different guesses could, in principle, measure response times to discover how many leading characters of the master secret are correct.
+- **Impact:** Low — exploiting this in practice requires many precise timing measurements under controlled network conditions, and the attack would still need to reconstruct a 74+ character high-entropy secret. However, constant-time comparisons are a cryptographic best practice and the fix is trivial.
+
+#### 🔒 Security Fix: Master Secret was Being Zerified After Rotation
+
+- **Fixed:** A critical bug where the new master secret was marked for end-of-request wiping and then assigned directly to `MasterSecretHolder.masterSecret`. At HTTP request end, `EncryptableInterceptor` would zerify the `newMasterSecret` parameter — which was the same object as `masterSecret` — silently destroying the just-rotated secret and rendering all subsequent encryption operations non-functional.
+- **Root cause:** `markForWiping(oldMasterSecret, newMasterSecret)` was called before `masterSecret = newMasterSecret`. Since both variables pointed to the same String object, the wipe at request end corrupted the stored secret.
+- **Fix:** `masterSecret` is now assigned a `.copy()` of `newMasterSecret` before marking the original for wiping. The canonical stored value is a distinct object from the one in the wipe queue.
+- **Impact:** Any application that called `rotateMasterSecret()` during an HTTP request would silently break after the request completed. This fix is critical for all users of the rotation feature.
+
+#### 🔒 Security Fix: Storage Data Loss During Rotation on MongoDB Write Failure
+
+- **Fixed:** During `rotateMasterSecret()`, old storage objects (GridFS/S3/custom) were deleted before the MongoDB document was updated with the new references. If `collection.replaceOne()` failed after storage deletion, the document would retain stale references pointing to now-deleted storage objects, causing permanent data loss with no recovery path.
+- **Fix:** Old storage deletions are now deferred via a `pendingDeletions` list. Deletions execute only **after** `replaceOne()` succeeds. If the MongoDB write fails, old storage data remains intact and the rotation can be safely retried (the idempotent identity-check mechanism continues to apply).
+- **Impact:** Rotation operations against unreliable MongoDB connections or under heavy load could have silently destroyed storage-backed encrypted fields.
+
+#### 🔒 Security Fix: `zerify()` Could Silently Skip Live Secrets
+
+- **Fixed:** `zerify()` had an early-return guard — `if (this.hashCode() == 0) return` — intended as an optimization to skip already-wiped strings. This guard was incorrect and dangerous: any string whose hash code happens to be zero (a ~1-in-4-billion chance for arbitrary input, but possible for any string) would be silently skipped and **left in memory unwiped**.
+- **Root cause:** `hashCode() == 0` is not a reliable indicator of "already zerified". A string can have a genuine hash of 0 without its contents being null bytes. Calling `hashCode()` also computes and caches the hash as a side effect, which can mask the condition on subsequent calls.
+- **Fix:** The early-return guard is removed entirely. `zerify()` now unconditionally overwrites the internal byte array. Re-zerifying an already-zerified string is safe and costs essentially nothing (filling an already-zero array).
+- **Impact:** Any secret string that happened to produce a hash code of zero would never be wiped from memory, defeating the entire purpose of the wiping mechanism for that value.
+
+#### 📚 Documentation Enhancements
+
+- **Clarified security model:** Significantly expanded [NOT_EXACTLY_ZERO_KNOWLEDGE.md](docs/NOT_EXACTLY_ZERO_KNOWLEDGE.md) with a dedicated "Why Transient Knowledge?" section that explains the architectural tradeoff between client-side purity and server-side functionality. Added precise terminology: "zero-knowledge outside requests" vs. "transient knowledge during requests" vs. "hardware-isolated transient knowledge with memory enclaves."
+- **Improved conceptual clarity:** Documentation now clearly distinguishes between the three security states and explains why transient knowledge is a deliberate design choice, not a compromise.
+- **Better audience alignment:** Rewording provides clarity for security engineers, architects, and developers at all levels to understand the framework's security posture and design rationale.
+
+#### 📋 Dependency Versions
+
+- **Kotlin:** 2.2.21
+- **Spring Boot:** 4.0.5
+- **AspectJ:** 1.9.22
+- **Java:** 21+
+
+---
+
 ## Contributing
 
 See [Contributing](CONTRIBUTING.md) for guidelines on bug reports, feature requests, and pull requests.
@@ -559,3 +623,4 @@ See [Contributing](CONTRIBUTING.md) for guidelines on bug reports, feature reque
 ## Reporting Security Issues
 
 If you discover a security vulnerability, please open a [GitHub Issue](https://github.com/WanionTechnologies/Encryptable/issues) with the "security" label or contact the maintainer directly.
+

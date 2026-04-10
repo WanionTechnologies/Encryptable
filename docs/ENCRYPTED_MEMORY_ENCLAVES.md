@@ -240,6 +240,6 @@ Both provide VM-level memory encryption with similar characteristics:
 ---
 
 
-**Last Updated:** 2026-04-02  
-**Framework Version:** 1.2.1   
+**Last Updated:** 2026-04-08  
+**Framework Version:** 1.2.2   
 **Recommendation:** Use standard security practices unless you have ultra-high-security requirements.

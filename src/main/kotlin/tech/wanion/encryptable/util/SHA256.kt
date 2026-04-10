@@ -34,7 +34,7 @@ object SHA256 {
      * Hashes the contents of an InputStream using SHA-256 and returns the result as a lowercase hexadecimal string.
      * The stream will be read in 4MB chunks and will be closed after hashing.
      * @param input The InputStream to hash.
-     * @return The SHA-512 hash as a lowercase hexadecimal string.
+     * @return The SHA-256 hash as a lowercase hexadecimal string.
      */
     @JvmStatic
     fun hash(input: InputStream): String {

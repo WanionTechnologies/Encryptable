@@ -80,6 +80,18 @@ final class EncryptableContext : ApplicationContextAware {
         /**
          * Thread-local storage for objects to be cleared at the end of each request.
          * Uses a concurrent set to avoid duplicate clearing and provide thread-safe access.
+         *
+         * **Why `InheritableThreadLocal` instead of `ThreadLocal`?**
+         * Child threads spawned from a request-handling thread (e.g., via `Thread { }.start()`)
+         * inherit this set, so any sensitive data they register is also wiped when the parent
+         * request ends. Using plain `ThreadLocal` would leave child-thread secrets in memory
+         * for the lifetime of the thread, bypassing the wiping mechanism entirely.
+         *
+         * **Trade-off:** If a child thread outlives its parent request, the parent's
+         * end-of-request wipe will clear objects the child is still using. This is the
+         * root cause of the documented coroutines incompatibility — coroutine continuations
+         * may resume on a different thread after the parent request (and its wipe) has completed.
+         * See docs/COROUTINES_INCOMPATIBILITY.md for details.
          */
         private val toClearThreadLocal = InheritableThreadLocal<MutableSet<Any>>()
 
@@ -126,22 +138,30 @@ final class EncryptableContext : ApplicationContextAware {
         /**
          * Wipes all objects marked for wiping for the current request in parallel and resets the set.
          * Uses a when block to call the appropriate wiping method.
+         *
+         * Cleanup (`toClearThreadLocal.remove()` and `toWipe.clear()`) is performed in a `finally`
+         * block to guarantee the ThreadLocal and set are always released — even if wiping throws.
+         * The exception still propagates (fail-fast), but no state is leaked.
          */
         private fun wipeMarked() {
             val toWipe = getToClearSet()
-            toClearThreadLocal.remove()
-            toWipe.parallelForEach { obj ->
-                when (obj) {
-                    is String -> obj.zerify()
-                    is ByteArray -> obj.parallelFill(0)
-                    is SecretKeySpec -> obj.clear()
-                    else -> throw UnsupportedOperationException(
-                        "Wipe operation not supported for type: "+obj.javaClass.name+". " +
-                        "Only String, ByteArray, and SecretKeySpec are supported. "
-                    )
+            try {
+                toWipe.parallelForEach { obj ->
+                    when (obj) {
+                        is String -> obj.zerify()
+                        is ByteArray -> obj.parallelFill(0)
+                        is SecretKeySpec -> obj.clear()
+                        else -> throw UnsupportedOperationException(
+                            "Wipe operation not supported for type: "+obj.javaClass.name+". " +
+                            "Only String, ByteArray, and SecretKeySpec are supported. "
+                        )
+                    }
                 }
+            } finally {
+                // Always clean up — whether wiping succeeded or threw.
+                toClearThreadLocal.remove()
+                toWipe.clear()
             }
-            toWipe.clear()
         }
     }
 }

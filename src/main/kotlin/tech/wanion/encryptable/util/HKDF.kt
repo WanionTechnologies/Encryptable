@@ -45,8 +45,37 @@ object HKDF {
         val hkdf = HKDF.fromHmacSha256()
 
         // Expands the high-entropy input using the context info.
-        // Since the input is already high-entropy, we skip the extract step per RFC 5869.
-        // The resulting key is 32 bytes long (256 bits), which is suitable for AES-256.
+        //
+        // **Why expand-only (no extract step)?**
+        //
+        // RFC 5869, Section 3.3 explicitly states:
+        //   "In some applications, the input key material IKM may already be present as a
+        //    cryptographically strong key [...]. In this case, the 'extract' step is unnecessary
+        //    and can be skipped."
+        //
+        // The IKM passed to this method is always at least length-validated:
+        //   - @HKDFId secrets: ≥48 chars (length only — entropy is NOT enforced, because user-credential-derived
+        //     secrets, e.g. a combination of password + 2FA + username, cannot be guaranteed to always produce
+        //     high-entropy values; the framework documents this as an accepted limitation)
+        //   - Master secret: ≥74 user-provided chars validated at ≥3.5 bits/char (≥259 bits) by SecurityUtils
+        //
+        // The extract step (HKDF-Extract) exists to "condition" low-quality IKM (e.g., a Diffie-Hellman
+        // shared secret or a human password) into a uniformly random PRK. However, extract does NOT add
+        // entropy — it only redistributes existing entropy into a more uniform form. If the IKM has low
+        // entropy, the derived key's security is bounded by that entropy regardless of whether extract
+        // is used or not. Extract is therefore not a remedy for low-entropy input.
+        //
+        // **Determinism requirement:**
+        // CID derivation MUST be deterministic — the same secret MUST always produce the same CID
+        // to allow stateless database lookups. The full extract+expand pipeline would also be
+        // deterministic (HKDF is a PRF), so this is not the deciding factor — but it reinforces
+        // that any change to the derivation pipeline would be a BREAKING CHANGE:
+        // all existing CIDs and ciphertext would become unreachable (different derived keys = data loss).
+        //
+        // **Breaking change warning:**
+        // Switching from expand-only to extract+expand would silently produce different keys for all
+        // existing data — CIDs would change (lookups fail), encryption keys would change (decryption fails).
+        // There is no migration path. DO NOT change this without a full database re-encryption migration.
         val derivedKey = hkdf.expand(highEntropyBytes, info.toByteArray(), byteLength)
 
         // Marks sensitive data for secure wiping from memory.

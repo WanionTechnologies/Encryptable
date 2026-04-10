@@ -1018,7 +1018,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * 2. **Parallel iteration:** Processes each entity in parallel using `parallelForEach` (virtual threads, I/O-bound).
      * 3. **Field inspection:** For each field in the entity's `storageFields` list:
      *    - **@Sliced fields:** Calls `storageHandler.getSlices()` to retrieve all individual slice references and adds them to the list.
-     *    - **Regular fields:** Calls `storageHandler.getReferenceBytes()` to retrieve the single reference and adds it to the list.
+     *    - **Regular fields:** Calls `storageHandler.getReference()` to retrieve the single reference and adds it to the list.
      * 4. **Filtering:** Returns only fields that have at least one reference, keeping output compact.
      *
      * ## Parameters
@@ -1033,7 +1033,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * ## Performance
      * - **Parallel processing:** O(n) where n = total number of storage fields across all entities.
      * - **Memory-safe:** Pre-populated map avoids concurrent mutation of the outer structure.
-     * - **Lazy reference extraction:** Only calls `getSlices`/`getReferenceBytes` for fields marked in `storageFields`, skipping inline fields.
+     * - **Lazy reference extraction:** Only calls `getSlices`/`getReference` for fields marked in `storageFields`, skipping inline fields.
      *
      * ## Use Cases
      * - Building a deletion list for bulk cascade delete of associated storage files.
@@ -1069,7 +1069,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
                     referenceList.addAll(slicedResult.slices)
                 } else {
                     // For regular fields, collect the single storage reference.
-                    val referenceBytes = storageHandler.getReferenceBytes(encryptable, fieldName) ?: return@forEach
+                    val referenceBytes = storageHandler.getReference(encryptable, fieldName) ?: return@forEach
                     referenceList.add(referenceBytes)
                 }
             }
@@ -1136,6 +1136,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
             if (!Encryptable.isNew(newEntity)) return@parallelForEach
             // New entity was not saved, perform cascade delete to clean up resources
             try {
+                deleteStorageReferences(newEntity)
                 cascadeDeleteMethod.invoke(newEntity)
             } catch (e: Exception) {
                 logger.error("Failed to cascade delete unsaved new entity: ${e.message}", e)
@@ -1332,7 +1333,7 @@ open class EncryptableMongoRepositoryImpl<T: Encryptable<T>>(
      * ## Throws
      * - `NotImplementedError` - This method is intentionally not implemented.
      */
-        override fun findAll(sort: Sort): List<T> = throw NotImplementedError("findAll is intentionally not implemented.")
+    override fun findAll(sort: Sort): List<T> = throw NotImplementedError("findAll is intentionally not implemented.")
 
     /**
      * # findAll (with Pageable)

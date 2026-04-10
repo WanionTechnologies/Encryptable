@@ -2,8 +2,8 @@
 
 ## Document Information
 
-**Audit Date:** 2026-04-07  
-**Framework Version:** 1.2.1  
+**Audit Date:** 2026-04-09  
+**Framework Version:** 1.2.2  
 **Audit Type:** AI Security Analysis  
 
 **🚨 DISCLAIMER:** This is an automated security analysis, not a substitute for professional audit by qualified cryptographers. Professional third-party audit strongly recommended before production deployment with sensitive data.
@@ -169,8 +169,10 @@ There is no way to guarantee that all user-derived secrets will always yield hig
 
 **Why expand-only mode is correct:**
 - RFC 5869: "If input is already high-entropy, skip extract and use expand-only"
-- Required for deterministic CID generation
-- Same secret must always produce same CID
+- Required for deterministic CID generation — same secret must always produce the same CID
+- The extract step does **not add entropy** — it only redistributes existing entropy into a more uniform form. If IKM has low entropy, the derived key's security is bounded by that entropy regardless of whether extract is used. Extract is therefore not a remedy for lower-entropy input.
+- `@HKDFId` secrets are length-validated only (≥48 chars) — entropy is **not** enforced, because user-credential-derived secrets (e.g., password + 2FA + username combinations) cannot be guaranteed to always produce high-entropy values. The framework documents this as an accepted limitation.
+- Master secrets are both length-validated (≥74 chars) and entropy-validated (≥3.5 bits/char via `SecurityUtils`).
 
 **🔐 Critical Security: Context Separation (RFC 5869 Section 3.2)**
 
@@ -202,6 +204,7 @@ Even with identical secrets and source classes, the different context strings en
 - **Defense:** Cryptographic infeasibility (2^288 search space for 48-character @HKDFId secrets, 2^128 for 22-character @Id)
 - **Framework behavior:** No secret comparison; secrets derive CIDs via HKDF (one-way)
 - **Result:** Even with perfect timing information, brute-force requires longer than age of universe
+- **Master secret rotation comparison:** `rotateMasterSecret()` validates the old master secret using `MessageDigest.isEqual()` (constant-time byte comparison) rather than Kotlin `==` (short-circuit). This prevents a timing side-channel where an attacker could measure response time differences to determine how many leading characters of the master secret are correct.
 
 **Security Equivalence:**
 
@@ -318,7 +321,7 @@ Result: Mathematically impossible for both
 
 With proper implementation (high-entropy secrets + rate limiting), Encryptable is **cryptographically secure to the maximum extent feasible**:
 - ✅ **No cryptographic vulnerabilities** (industry-standard algorithms)
-- ✅ **No active implementation flaws** (see note below — applies to 1.0.9+, regression tests added)
+- ✅ **No active implementation flaws** (see note below — applies to 1.2.2+, regression tests added)
 - ✅ **Attack surface minimized** (no credentials, no identity storage)
 - ✅ **Only attack is brute force** (2^288 search space = computationally infeasible)
 - ✅ **With mitigations:** Practically and mathematically impossible to break through cryptographic means alone
@@ -347,14 +350,26 @@ With proper implementation (high-entropy secrets + rate limiting), Encryptable i
 > when master secret support was introduced in 1.0.4. Cryptographic understanding was never at
 > fault; `getSecretFor()` existed and was used correctly everywhere else.
 >
-> In 1.0.9, dedicated regression tests (`EncryptableKeyCorrectnessTest`, `EncryptableSlicedStorageTest`, and others) were added to directly
+ > In 1.0.9, dedicated regression tests (`EncryptableKeyCorrectnessTest`, `EncryptableSlicedStorageTest`, and others) were added to directly
 > verify key correctness for every field type, ID strategy, and codepath — including `@Sliced` fields — bypassing the
 > framework's decrypt path entirely and reading raw ciphertext from memory and storage. With
-> 105 tests across 16 files covering every codepath, it is impossible for a wrong-key regression
+> 112 tests across 16 files covering every codepath, it is impossible for a wrong-key regression
 > to hide behind a passing round-trip test.
 >
 > The "no active implementation flaws" claim above applies to **1.0.9 and later**. Full
 > transparency on the 1.0.8 incident: [MISSED_CALLSITE_BUG_1_0_8.md](MISSED_CALLSITE_BUG_1_0_8.md)
+
+> **⚠️ Security Incident (1.2.2 — Self-Discovered via AI Security Audit):** Four bugs were found and fixed in 1.2.2:
+>
+> 1. **`zerify()` could silently skip live secrets** — An early-return guard `if (this.hashCode() == 0) return` was intended as an optimization but was incorrect: any string whose hash code evaluates to zero (about 1-in-4-billion for arbitrary input, possible for any string) would be silently left in memory unwiped, defeating the entire purpose of the clearing mechanism for that value. The guard was removed entirely; re-zerifying an already-zerified string is safe and costs essentially nothing.
+>
+> 2. **Master secret destroyed after rotation** — `markForWiping(oldMasterSecret, newMasterSecret)` was called before `masterSecret = newMasterSecret`. Since both variables pointed to the same String object, `EncryptableInterceptor` would zerify the new master secret at HTTP request end, silently destroying it and making all subsequent encryption operations non-functional. Fixed by assigning `newMasterSecret.copy()` so the canonical stored value is a distinct object from the one in the wipe queue.
+>
+> 3. **Storage data loss during rotation on MongoDB write failure** — In `rotateSingleStorageField` and `rotateSlicedStorageField`, old storage objects (GridFS/S3/custom) were deleted before `collection.replaceOne()` was called. If the MongoDB write failed, the document retained stale references pointing to now-deleted storage objects — permanent data loss with no recovery path. Fixed by deferring all storage deletions to a `pendingDeletions` list that executes only after `replaceOne()` succeeds.
+>
+> 4. **Timing side-channel in master secret comparison** — `rotateMasterSecret()` compared the stored master secret against the caller-provided value using Kotlin's `==` operator (short-circuit string comparison). This leaks timing information proportional to how many leading bytes match, allowing an adversary to iteratively narrow down the secret. Fixed by using `MessageDigest.isEqual()` for constant-time comparison.
+>
+> All four bugs were found in the same AI audit session and fixed immediately. The "no active implementation flaws" claim above applies to **1.2.2 and later**.
 
 **Requirements for maximum security:**
 1. ✅ Framework: Minimum 48 characters (288 bits) for @HKDFId, 22 characters (128 bits) for @Id CIDs, 74 characters for master secret (≥259 bits entropy), all with entropy validation (enforced)
@@ -587,7 +602,7 @@ Encryptable implements a robust mitigation strategy to minimize the risk of secr
 
 - **Proactive Clearing:** All secrets, decrypted data, and intermediate plaintexts managed by the framework are automatically registered for clearing during each request. 
 - **Developer Responsibility:** It is the developer's responsibility to register any derivation material (such as user details, 2FA secrets, recovery codes, and intermediate cryptographic values) for clearing. Encryptable does not automatically track or clear such material unless explicitly registered by the developer.
-- **Automated Zerifying:** At the end of every request, Encryptable automatically overwrites the internal memory of all registered `String`, `ByteArray`, and cryptographic key objects using reflection-based clearing methods (`zerify`, `parallelFill(0)`, `clear`, etc.).
+- **Automated Zerifying:** At the end of every request, Encryptable automatically overwrites the internal memory of all registered `String`, `ByteArray`, and cryptographic key objects using reflection-based clearing methods (`zerify`, `parallelFill(0)`, `clear`, etc.). **Note:** As of 1.2.2, `zerify()` unconditionally clears the string's backing array — a previous early-return guard (`hashCode() == 0`) that could silently skip live secrets was removed.
 - **Fail-Fast Privacy:** If clearing fails (e.g., due to JVM restrictions), Encryptable throws an exception, ensuring privacy failures are never silent.
 - **Per-Request Isolation:** Clearing is managed per-request using thread-local storage, so sensitive data is only retained for the minimum necessary duration.
 - **Developer Guidance:** Developers are strongly encouraged to register all secrets, decrypted data, and any material used to derive secrets for clearing. This includes user details, 2FA secrets, recovery codes, and any intermediate values in cryptographic flows.
@@ -746,7 +761,7 @@ Because the remaining PCI-DSS controls (network, monitoring, access, audit) are 
 ### 5.1 Security Validation 🔴 Required
 
 **Option A: Professional Audit (Ideal)**
-- Cost: $4k-6k for ~116 lines of core crypto (`AES256.kt` and `HKDF.kt`). Callsite verification is already covered by 105 tests across 16 files (`EncryptableKeyCorrectnessTest` + `EncryptableSlicedStorageTest` et al.) — every field type, ID strategy, and `@Sliced` codepath is tested with raw-ciphertext assertions bypassing the decrypt path. Auditor can focus exclusively on the primitives.
+- Cost: $4k-6k for ~116 lines of core crypto (`AES256.kt` and `HKDF.kt`). Callsite verification is already covered by 112 tests across 16 files (`EncryptableKeyCorrectnessTest` + `EncryptableSlicedStorageTest` et al.) — every field type, ID strategy, and `@Sliced` codepath is tested with raw-ciphertext assertions bypassing the decrypt path. Auditor can focus exclusively on the primitives.
 - Best for: High-value data, regulated industries, enterprise
 
 **Option B: Community Review (Budget Alternative)**
@@ -797,7 +812,7 @@ Because the remaining PCI-DSS controls (network, monitoring, access, audit) are 
 - [x] Secure failure handling
 - [x] No secrets in logs
 - [x] Required JVM arguments set (fail-fast if missing)
-- [x] Regression tests for key correctness (105 tests across 16 files — `EncryptableKeyCorrectnessTest` bypasses the framework decrypt path entirely, reads raw ciphertext directly from memory and storage, covers every codepath: `String`, `ByteArray`, `List<String>`, nested `Encryptable` fields, `List<Encryptable>` fields, `@HKDFId` entities, `@Id` entities, and `@Sliced` fields — all with both correct-key and wrong-key assertions)
+- [x] Regression tests for key correctness (112 tests across 16 files — `EncryptableKeyCorrectnessTest` bypasses the framework decrypt path entirely, reads raw ciphertext directly from memory and storage, covers every codepath: `String`, `ByteArray`, `List<String>`, nested `Encryptable` fields, `List<Encryptable>` fields, `@HKDFId` entities, `@Id` entities, and `@Sliced` fields — all with both correct-key and wrong-key assertions)
 - [ ] **Professional security audit** (or community review/expert consultation)
 
 ### Application Level
@@ -851,12 +866,12 @@ See [MEMORY_HIGIENE_IN_ENCRYPTABLE.md](MEMORY_HIGIENE_IN_ENCRYPTABLE.md) for ful
 
 Encryptable is rated as **Excellent** for cryptographic security, architecture, and failure handling, and is production-ready for most use cases, pending a professional audit for regulated industries. The framework's unique strengths include:
 
-- No exploitable cryptographic vulnerabilities identified (as of 1.0.9)
+- No exploitable cryptographic vulnerabilities identified (as of 1.2.2)
 - Transient knowledge (request-scoped) architecture (no user identity or credentials stored)
 - Strict minimum secret length and entropy enforcement
 - Proactive memory exposure mitigation: secrets and sensitive data are wiped from JVM memory at the end of each request, with fail-fast enforcement if wiping fails
 - Honest documentation of limitations and clear separation of framework vs. application responsibilities
-- **Full transparency on historical security incidents:** One self-discovered bug is openly documented: a missed-callsite in 1.0.4–1.0.7 caused `ByteArray @Encrypt` fields on `@Id` entities to be encrypted with the public CID instead of the master secret ([MISSED_CALLSITE_BUG_1_0_8.md](MISSED_CALLSITE_BUG_1_0_8.md), fixed in 1.0.8 with a migration). It was self-discovered via careful code review and followed up with 105 regression tests across 16 files that read raw ciphertext directly, making it impossible for this class of bug to go undetected in future.
+- **Full transparency on historical security incidents:** Two self-discovered bugs are openly documented: (1) A missed-callsite in 1.0.4–1.0.7 caused `ByteArray @Encrypt` fields on `@Id` entities to be encrypted with the public CID instead of the master secret ([MISSED_CALLSITE_BUG_1_0_8.md](MISSED_CALLSITE_BUG_1_0_8.md), fixed in 1.0.8 with a migration). (2) Four bugs found in a 1.2.2 AI security audit: `zerify()` silently skipping secrets with hash 0, master secret being destroyed after rotation, storage data loss if MongoDB write failed during rotation, and a timing side-channel in master secret comparison — all found and fixed in the same session. It was self-discovered via careful code review and followed up with 112 regression tests across 16 files that read raw ciphertext directly, making it impossible for this class of bug to go undetected in future.
 
 **Production Use:**
 - Ready for startups, SaaS, web apps, and internal tools with proper application-level controls (rate limiting, monitoring, TLS/HTTPS)

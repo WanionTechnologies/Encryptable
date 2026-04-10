@@ -59,15 +59,15 @@ To add the Encryptable Starter to your project, use:
 ```kotlin
 dependencies {
     // Encryptable Starter (includes all required dependencies)
-    implementation("tech.wanion:encryptable-starter:1.2.0")
+    implementation("tech.wanion:encryptable-starter:1.2.2")
   
     // Encryptable Aspects
-    aspect("tech.wanion:encryptable:1.2.1")
+    aspect("tech.wanion:encryptable:1.2.2")
 ```
 
 Ensure your `build.gradle.kts` has the AspectJ weaving plugin configured as shown above, and the `aspect` dependency is specified (not `implementation`).
     // Encryptable Aspects for Tests
-    testAspect("tech.wanion:encryptable:1.2.0")
+    testAspect("tech.wanion:encryptable:1.2.2")
 }
 ```
 
