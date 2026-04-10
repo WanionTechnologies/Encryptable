@@ -16,12 +16,12 @@ Hardware-enforced secure execution environments where CPU encrypts all memory, p
 
 ### Available Technologies
 
-| Technology | Type | Availability | Overhead |
-|-----------|------|-------------|----------|
-| **Intel TDX** | VM-level | Xeon 4th Gen+ (2023+) | 2-5% |
-| **AMD SEV-SNP** | VM-level | EPYC 3rd Gen+ (2021+), Azure, GCP, OCI | 2-6% |
-| **Intel SGX** | Process-level | Xeon only | 20-50% |
-| **AWS Nitro** | Process-level | EC2 instances | 5-15% |
+| Technology      | Type          | Availability                           | Overhead |
+|-----------------|---------------|----------------------------------------|----------|
+| **Intel TDX**   | VM-level      | Xeon 4th Gen+ (2023+)                  | 2-5%     |
+| **AMD SEV-SNP** | VM-level      | EPYC 3rd Gen+ (2021+), Azure, GCP, OCI | 2-6%     |
+| **Intel SGX**   | Process-level | Xeon only                              | 20-50%   |
+| **AWS Nitro**   | Process-level | EC2 instances                          | 5-15%    |
 
 **For Encryptable:** VM-level enclaves (TDX/SEV-SNP) are recommended due to lower overhead and simpler deployment.
 

@@ -553,7 +553,7 @@ This patch release maintains full backward compatibility with 1.2.0 while introd
 
 ---
 
-## [1.2.2] - 2026-04-09
+## [1.2.2] - 2026-04-10
 
 ### 🔒 Security Patch: Critical Rotation Fixes & Memory Hygiene
 

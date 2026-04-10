@@ -30,20 +30,18 @@ No crypto expertise required.
 
 With traditional encryption, your server holds the keys, a database breach still exposes everything. Encryptable flips this: each user's data is encrypted with keys derived from *their* secret, which the server never stores. After the request ends, the key is gone.
 
-| | Traditional Encryption | Encryptable |
-|---|---|---|
-| **Database stolen** | Attacker has encrypted data + keys on same server | Attacker has encrypted data, keys don't exist anywhere |
-| **Server compromised** | All users exposed | Only active sessions at risk |
-| **Username→data lookup** | Requires mapping tables | Cryptographic addressing — ID *is* the lookup |
-| **Developer effort** | Manual key management, rotation, per-field logic | `@Encrypt` annotation, done |
+|                          | Traditional Encryption                            | Encryptable Framework                                  |
+|--------------------------|---------------------------------------------------|--------------------------------------------------------|
+| **Database stolen**      | Attacker has encrypted data + keys on same server | Attacker has encrypted data, keys don't exist anywhere |
+| **Server compromised**   | All users exposed                                 | Only active sessions at risk                           |
+| **Username→data lookup** | Requires mapping tables                           | Cryptographic addressing                               |
+| **Developer effort**     | Manual key management, rotation, per-field logic  | `@Encrypt` annotation, done                            |
 
-**The core innovation:** Your user's ID is derived from their secret via HKDF, the server never stores the secret.  
+**The core innovation, Cryptographic Addressing:** Your user's ID is derived from their secret via HKDF, the server never stores the secret.  
 Because there's no username/email mapping table needed for lookups, there's nothing to leak, nothing to correlate.  
 The server can list documents, but cannot identify or correlate them to specific users without their secrets — *as long as best practices are followed*.
 
----
-
-**Honest Security Model:** Request-scoped (transient knowledge). The server processes secrets during requests to encrypt/decrypt data, this is not **EXACTLY** zero-knowledge.
+**Honest Security Model:** Request-scoped (transient knowledge). The server processes secrets during requests to encrypt/decrypt data, this is not **exactly** zero-knowledge.
 **Full transparency:** [Security Model](docs/NOT_EXACTLY_ZERO_KNOWLEDGE.md) • [Limitations](docs/LIMITATIONS.md)
 
 **Learn More:** [Technical Innovations](docs/INNOVATIONS.md) • [AI Security Audit](docs/AI_SECURITY_AUDIT.md) • [Best Practices](docs/BEST_PRACTICES.md) • [Changelog](CHANGELOG.md)
